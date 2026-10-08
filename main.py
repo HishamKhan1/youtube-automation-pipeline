@@ -38,7 +38,7 @@ import json
 from dotenv import load_dotenv
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-
+import subprocess
 
 load_dotenv()
 
@@ -1861,6 +1861,51 @@ def generate_all_story_audio(
 
 
 #### These Functions Create and Narrations
+
+
+#### These Functions create the video 
+
+
+def create_ffmpeg_test_video(audio_file, output_file):
+
+    command = [
+        "ffmpeg",
+        "-y",
+
+        "-f", "lavfi",
+        "-i", "color=c=black:s=1920x1080:r=30",
+
+        "-i", audio_file,
+
+        "-t", "10",
+
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+
+        "-c:a", "aac",
+        "-b:a", "192k",
+
+        "-shortest",
+        output_file
+    ]
+
+    subprocess.run(
+        command,
+        check=True
+    )
+
+    print(f"TEST VIDEO SAVED: {output_file}")
+
+
+#### These Functions create the video
+
+
+
+
+
+
+
 
 
 print("\nYOUTUBE VIDEO GENERATOR")
