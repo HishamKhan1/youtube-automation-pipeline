@@ -6,3 +6,6 @@ venv/
 output/
 *.mp3
 *_test.txt
+
+assets/backgrounds/*.mp4
+assets/ambience/*.mp3
