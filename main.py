@@ -1748,6 +1748,128 @@ def load_video_info(output_folder):
 
     return video_info
 
+def get_completed_stories(
+    project_folder,
+    selected_stories
+):
+
+    completed_stories = []
+
+    for number, story in enumerate(
+        selected_stories,
+        start=1
+    ):
+
+        story_file = os.path.join(
+            project_folder,
+            f"story_{number:02d}.txt"
+        )
+
+        if os.path.exists(story_file):
+            completed_stories.append(
+                story
+            )
+
+    return completed_stories
+
+def generate_youtube_metadata(
+    video_idea,
+    selected_stories
+):
+
+    story_titles = []
+    story_count = len(selected_stories)
+    for story in selected_stories:
+
+        if isinstance(story, dict):
+            story_titles.append(
+                story.get("title", "")
+            )
+
+    stories_text = "\n".join(
+        f"- {title}"
+        for title in story_titles
+        if title
+    )
+
+    prompt = f"""
+Create YouTube metadata for an original fictional horror story compilation.
+
+ACTUAL COMPLETED STORY COUNT:
+{story_count}
+
+IMPORTANT:
+Use this completed story count in the title and description.
+If the original video idea mentions a different number,
+ignore that number.
+
+VIDEO IDEA:
+{video_idea}
+
+STORIES:
+{stories_text}
+
+Return ONLY valid JSON in this exact format:
+
+{{
+    "title": "YouTube title here",
+    "description": "YouTube description here"
+}}
+
+TITLE RULES:
+- Maximum 100 characters
+- Make it clickable but not ridiculous clickbait
+- Horror/scary-story niche
+- Natural human wording
+- Do not say Reddit because these stories are original fiction
+- Prefer a strong searchable phrase like Scary Stories, Horror Stories, Late Night Stories, etc.
+
+DESCRIPTION RULES:
+- 2-4 short paragraphs
+- Explain what the viewer is getting
+- Mention that the stories are original fictional horror stories
+- Keep it natural
+- Do not reveal endings
+"""
+
+    response = client.responses.create(
+        model="gpt-5-mini",
+        input=prompt
+    )
+
+    metadata = json.loads(
+        response.output_text
+    )
+
+    return metadata
+
+def save_youtube_metadata(
+    project_folder,
+    metadata
+):
+
+    metadata_file = os.path.join(
+        project_folder,
+        "youtube_metadata.json"
+    )
+
+    with open(
+        metadata_file,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            metadata,
+            f,
+            indent=4,
+            ensure_ascii=False
+        )
+
+    print(
+        f"YOUTUBE METADATA SAVED: {metadata_file}"
+    )
+
 
 
 #### These Functions Create and revise our video scripts <
@@ -3364,27 +3486,35 @@ project_folder = os.path.join(
     "10_late-night_messages_you_never_want_to_hear__scary_stories_of_calls_texts__voicemails"
 )
 
-video_file = os.path.join(
+video_info = load_video_info(
+    project_folder
+)
+
+completed_stories = get_completed_stories(
     project_folder,
-    "final_video_with_transitions.mp4"
+    video_info["selected_stories"]
 )
 
-rain_file = os.path.join(
-    "assets",
-    "ambience",
-    "rain.mp3"
+metadata = generate_youtube_metadata(
+    video_info["video_idea"],
+    completed_stories
 )
 
-final_output = os.path.join(
+save_youtube_metadata(
     project_folder,
-    "final_video_complete.mp4"
+    metadata
 )
 
-add_background_ambience(
-    video_file,
-    rain_file,
-    final_output
-)
+print("\nCOMPLETED STORIES:")
+print(len(completed_stories))
+
+print("\nGENERATED YOUTUBE METADATA")
+
+print("\nTITLE:")
+print(metadata["title"])
+
+print("\nDESCRIPTION:")
+print(metadata["description"])
 
 
 
