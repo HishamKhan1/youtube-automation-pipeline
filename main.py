@@ -2138,7 +2138,209 @@ def create_final_thumbnail(
 
     return output_file
 
+def finalize_video_project(
+    project_folder,
+    rain_file
+):
 
+    print("\nFINALIZING VIDEO PROJECT...")
+
+    # -------------------------
+    # LOAD PROJECT INFORMATION
+    # -------------------------
+
+    video_info = load_video_info(
+        project_folder
+    )
+
+    selected_stories = video_info[
+        "selected_stories"
+    ]
+
+    story_count = len(
+        selected_stories
+    )
+
+    completed_stories = get_completed_stories(
+        project_folder,
+        selected_stories
+    )
+
+    print(
+        f"\nCOMPLETED STORIES: "
+        f"{len(completed_stories)}"
+    )
+
+    # -------------------------
+    # STORY TRANSITIONS
+    # -------------------------
+
+    generate_all_story_transitions(
+        project_folder,
+        selected_stories
+    )
+
+    # -------------------------
+    # COMBINE STORY VIDEOS
+    # -------------------------
+
+    video_files = get_video_files_with_transitions(
+        project_folder,
+        story_count
+    )
+
+    concat_file = os.path.join(
+        project_folder,
+        "concat_with_transitions.txt"
+    )
+
+    transition_video = os.path.join(
+        project_folder,
+        "final_video_with_transitions.mp4"
+    )
+
+    combine_story_videos(
+        video_files,
+        transition_video,
+        concat_file
+    )
+
+    # -------------------------
+    # ADD RAIN AMBIENCE
+    # -------------------------
+
+    final_video = os.path.join(
+        project_folder,
+        "final_video_complete.mp4"
+    )
+
+    add_background_ambience(
+        transition_video,
+        rain_file,
+        final_video
+    )
+
+    # -------------------------
+    # YOUTUBE METADATA
+    # -------------------------
+
+    metadata_file = os.path.join(
+        project_folder,
+        "youtube_metadata.json"
+    )
+
+    if os.path.exists(metadata_file):
+
+        with open(
+            metadata_file,
+            "r",
+            encoding="utf-8"
+        ) as f:
+            metadata = json.load(f)
+
+        print(
+            "YOUTUBE METADATA ALREADY EXISTS "
+            "- USING SAVED VERSION"
+        )
+
+    else:
+
+        metadata = generate_youtube_metadata(
+            video_info["video_idea"],
+            completed_stories
+        )
+
+        save_youtube_metadata(
+            project_folder,
+            metadata
+        )
+
+    # -------------------------
+    # THUMBNAIL PLAN
+    # -------------------------
+
+    thumbnail_plan_file = os.path.join(
+        project_folder,
+        "thumbnail_plan.json"
+    )
+
+    if os.path.exists(
+        thumbnail_plan_file
+    ):
+
+        with open(
+            thumbnail_plan_file,
+            "r",
+            encoding="utf-8"
+        ) as f:
+            thumbnail_plan = json.load(f)
+
+        print(
+            "THUMBNAIL PLAN ALREADY EXISTS "
+            "- USING SAVED VERSION"
+        )
+
+    else:
+
+        thumbnail_plan = generate_thumbnail_plan(
+            metadata,
+            completed_stories
+        )
+
+        save_thumbnail_plan(
+            project_folder,
+            thumbnail_plan
+        )
+
+    # -------------------------
+    # THUMBNAIL BACKGROUND
+    # -------------------------
+
+    thumbnail_background = os.path.join(
+        project_folder,
+        "thumbnail_background.png"
+    )
+
+    if not os.path.exists(
+        thumbnail_background
+    ):
+
+        generate_thumbnail_image(
+            project_folder,
+            thumbnail_plan
+        )
+
+    else:
+
+        print(
+            "THUMBNAIL BACKGROUND ALREADY EXISTS "
+            "- SKIPPING IMAGE GENERATION"
+        )
+
+    # -------------------------
+    # FINAL THUMBNAIL
+    # -------------------------
+
+    create_final_thumbnail(
+        project_folder,
+        thumbnail_plan
+    )
+
+    # -------------------------
+    # COMPLETE
+    # -------------------------
+
+    print("\nPROJECT COMPLETE")
+    print(
+        f"VIDEO: {final_video}"
+    )
+    print(
+        f"METADATA: {metadata_file}"
+    )
+    print(
+        "THUMBNAIL: "
+        f"{os.path.join(project_folder, 'thumbnail_final.png')}"
+    )
 
 
 #### These Functions Create and revise our video scripts <
@@ -3743,32 +3945,70 @@ def get_video_files_with_transitions(
     return video_files
 
 
-
-
-
-
 #### These Functions create the video
 
+def choose_project_folder():
 
-project_folder = os.path.join(
-    "output",
-    "10_late-night_messages_you_never_want_to_hear__scary_stories_of_calls_texts__voicemails"
-)
+    output_folder = "output"
 
-with open(
-    os.path.join(
-        project_folder,
-        "thumbnail_plan.json"
-    ),
-    "r",
-    encoding="utf-8"
-) as f:
-    thumbnail_plan = json.load(f)
+    projects = []
 
-create_final_thumbnail(
-    project_folder,
-    thumbnail_plan
-)
+    for folder_name in os.listdir(
+        output_folder
+    ):
+
+        project_folder = os.path.join(
+            output_folder,
+            folder_name
+        )
+
+        video_info_file = os.path.join(
+            project_folder,
+            "video_info.json"
+        )
+
+        if (
+            os.path.isdir(project_folder)
+            and os.path.exists(video_info_file)
+        ):
+            projects.append(
+                project_folder
+            )
+
+    if not projects:
+        print("\nNO VIDEO PROJECTS FOUND.")
+        return None
+
+    print("\nVIDEO PROJECTS:")
+
+    for index, project in enumerate(
+        projects,
+        start=1
+    ):
+
+        print(
+            f"{index}. "
+            f"{os.path.basename(project)}"
+        )
+
+    choice = input(
+        "\nChoose project: "
+    )
+
+    try:
+        project_index = int(choice) - 1
+
+        return projects[
+            project_index
+        ]
+
+    except:
+        print(
+            "INVALID PROJECT SELECTION."
+        )
+
+        return None
+
 
 
 
@@ -3777,6 +4017,7 @@ print("\nYOUTUBE VIDEO GENERATOR")
 
 print("\n1. Create new video")
 print("2. Resume existing video")
+print("3. Finalize video")
 
 choice = input("\nChoose an option: ")
 
@@ -3920,7 +4161,25 @@ elif choice == "2":
         f"Stories planned: {len(selected_stories)}"
     )
 
+elif choice == "3":
 
+    project_folder = choose_project_folder()
+
+    if project_folder:
+
+        rain_file = os.path.join(
+            "assets",
+            "ambience",
+            "rain.mp3"
+        )
+
+        finalize_video_project(
+            project_folder,
+            rain_file
+        )
+        
+        raise SystemExit
+        
 # -----------------------------------
 # INVALID OPTION
 # -----------------------------------
