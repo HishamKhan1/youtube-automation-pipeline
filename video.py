@@ -1,6 +1,6 @@
 import os
 import subprocess
-
+from config import RAIN_VOLUME
 
 def create_story_video(
     background_file,
@@ -369,7 +369,7 @@ def add_background_ambience(
 
         "-filter_complex",
         (
-            "[1:a]volume=0.025[ambience];"
+            f"[1:a]volume={RAIN_VOLUME}[ambience];"
             "[0:a][ambience]amix="
             "inputs=2:"
             "duration=first:"

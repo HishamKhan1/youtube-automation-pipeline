@@ -1,7 +1,7 @@
 import os
 import json
 import base64
-
+from config import DEFAULT_TEXT_MODEL, IMAGE_MODEL
 from PIL import Image, ImageDraw, ImageFont
 
 def save_thumbnail_plan(
@@ -88,7 +88,7 @@ IMAGE PROMPT RULES:
 """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt
     )
 
@@ -107,7 +107,7 @@ def generate_thumbnail_image(
     print("\nGENERATING THUMBNAIL IMAGE...")
 
     result = client.images.generate(
-        model="gpt-image-2.5-flare",
+        model=IMAGE_MODEL,
         prompt=thumbnail_plan["image_prompt"],
         size="1536x864",
         quality="medium",

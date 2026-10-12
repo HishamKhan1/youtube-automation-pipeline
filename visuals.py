@@ -1,6 +1,6 @@
 import json
 import re
-
+from config import DEFAULT_TEXT_MODEL
 
 def split_story_into_visual_scenes(
     story_text,
@@ -143,7 +143,7 @@ def generate_visual_plan(
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt,
         text={
             "format": {

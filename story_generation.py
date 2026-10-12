@@ -1,4 +1,6 @@
 import json
+from config import DEFAULT_TEXT_MODEL, STORY_MODEL
+
 
 def generate_idea(client):
 
@@ -81,7 +83,7 @@ def generate_idea(client):
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt
     )
 
@@ -195,7 +197,7 @@ def generate_story_ideas(
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt,
         text={
             "format": {
@@ -328,7 +330,7 @@ def select_best_stories(client, video_idea, story_ideas):
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt,
         text={
             "format": {
@@ -428,7 +430,7 @@ def get_replacement_story(
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt,
         text={
             "format": {
@@ -574,7 +576,7 @@ def evaluate_premise(client, video_idea, story_idea):
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt,
         text={
             "format": {
@@ -695,7 +697,7 @@ def revise_premise(client, video_idea, story_idea, evaluation):
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt
     )
 
@@ -817,7 +819,7 @@ def generate_narrator_profile(client, video_idea, story_idea):
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt,
         text={
             "format": {
@@ -1097,7 +1099,7 @@ def generate_full_story(
     """
 
     response = client.responses.create(
-        model="gpt-5.4-mini",
+        model=STORY_MODEL,
         input=prompt
     )
 
@@ -1209,7 +1211,7 @@ def evaluate_story(client, video_idea, story_idea, story):
     """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt,
         text={
             "format": {
@@ -1367,7 +1369,7 @@ def revise_story(client, video_idea, story_idea, story, evaluation):
     """
 
     response = client.responses.create(
-        model="gpt-5.4-mini",
+        model=STORY_MODEL,
         input=prompt
     )
 

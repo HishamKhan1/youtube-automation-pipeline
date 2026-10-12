@@ -1,5 +1,7 @@
 import os
 import json
+from config import DEFAULT_TEXT_MODEL
+
 
 def save_youtube_metadata(
     project_folder,
@@ -90,7 +92,7 @@ DESCRIPTION RULES:
 """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=DEFAULT_TEXT_MODEL,
         input=prompt
     )
 
