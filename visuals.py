@@ -1,4 +1,6 @@
 import json
+import re
+
 
 def split_story_into_visual_scenes(
     story_text,
@@ -44,6 +46,7 @@ def split_story_into_visual_scenes(
     return scenes
 
 def generate_visual_plan(
+    client,
     video_idea,
     story_idea,
     story_text,
