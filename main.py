@@ -1,6 +1,6 @@
 # Hisham Khan 
 # Start Date 2026-09-28
-# Last update 2026-09-29
+# Last update 2026-10-12
 # Youtube Video Generator
 """
 reddit-video-generator/
@@ -68,20 +68,6 @@ client = OpenAI(
 elevenlabs = ElevenLabs(
     api_key=os.getenv("ELEVENLABS_API_KEY")
 )
-
-
-#### These Functions Create and revise our video scripts <
-#--------------------------------------------------------------
-
-#### These Functions create the video 
-
-
-
-
-#### These Functions create the video
-
-
-
 
 
 
