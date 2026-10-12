@@ -1,0 +1,4 @@
+openai==3.22.1
+elevenlabs==2.71.0
+python-dotenv==1.2.3
+Pillow==12.1.1
