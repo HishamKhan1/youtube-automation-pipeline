@@ -34,77 +34,27 @@ reddit-video-generator/
 """
 
 import os
-import json
 from dotenv import load_dotenv
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-import subprocess
-import re
-from difflib import SequenceMatcher
-import base64
-from PIL import Image, ImageDraw, ImageFont
 
-
-from thumbnail import (
-    save_thumbnail_plan,
-    generate_thumbnail_plan,
-    generate_thumbnail_image,
-    create_final_thumbnail
-)
-from metadata import (
-    save_youtube_metadata,
-    generate_youtube_metadata
-)
 from audio import (
-    split_story_for_tts,
-    generate_story_audio,
     generate_all_story_audio
 )
-from subtitles import (
-    normalize_subtitle_word,
-    get_story_words,
-    get_whisper_words,
-    align_story_words,
-    assign_story_timestamps,
-    create_subtitle_blocks,
-    format_srt_timestamp,
-    build_srt_from_blocks,
-    get_word_timestamps,
-    generate_word_timed_subtitles,
-    generate_all_story_subtitles,
-    create_subtitled_video,
-    generate_all_subtitled_videos,
-    create_subtitle_preview
-)
-from video import (
-    create_story_video,
-    generate_all_story_videos,
-    create_concat_file,
-    combine_story_videos,
-    get_subtitled_story_files,
-    get_video_files_with_transitions,
-    create_story_transition,
-    generate_all_story_transitions,
-    add_background_ambience
-)
+
 from story_generation import (
     generate_idea,
     generate_story_ideas,
     select_best_stories,
-    revise_premise,
-    evaluate_premise,
     prepare_premise,
     get_replacement_story,
     generate_narrator_profile,
     generate_full_story,
-    evaluate_story,
-    revise_story,
     prepare_story
 )
 from project import (
     save_video_info,
     load_video_info,
-    get_completed_stories,
     choose_project_folder
 )
 from pipeline import finalize_video_project
