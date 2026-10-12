@@ -224,6 +224,22 @@ The project also uses a quality-control pipeline where generated story premises 
 
 Projects are saved throughout generation so interrupted runs can be resumed instead of restarting the entire workflow.
 
+## Testing
+
+The project includes unit tests for core non-API functionality, including:
+
+- TTS text chunking
+- Subtitle word normalization
+- Story-to-transcription word alignment
+
+Run the full test suite with:
+
+```bash
+python -m unittest discover -s tests
+```
+
+Current test suite: **7 passing tests**.
+
 ## Current Status
 
 The core automated production pipeline is functional.
