@@ -126,6 +126,32 @@ Thumbnail Generation
 Final Video
 ```
 
+## Architecture
+
+```mermaid
+flowchart LR
+    A[main.py] --> B[story_generation.py]
+    A --> C[audio.py]
+    A --> D[subtitles.py]
+    A --> E[project.py]
+    A --> F[pipeline.py]
+
+    B --> G[OpenAI API]
+    C --> H[ElevenLabs API]
+
+    F --> I[video.py]
+    F --> J[metadata.py]
+    F --> K[thumbnail.py]
+
+    I --> L[FFmpeg]
+    J --> G
+    K --> G
+
+    E --> M[Project Files]
+    L --> N[Final Video]
+    J --> O[YouTube Metadata]
+    K --> P[Thumbnail]
+```
 ## Requirements
 
 - Python
