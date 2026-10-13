@@ -1,5 +1,7 @@
 # Automated YouTube Horror Video Generator
 
+![Tests](https://github.com/HishamKhan1/youtube-automation-pipeline/actions/workflows/test.yml/badge.svg)
+
 A modular Python automation pipeline that generates complete long-form horror story videos for YouTube.
 
 The system handles story ideation, script generation, quality control, AI narration, subtitle synchronization, video rendering, background ambience, transitions, metadata, and thumbnail generation.
