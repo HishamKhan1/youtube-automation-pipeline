@@ -238,7 +238,7 @@ Run the full test suite with:
 python -m unittest discover -s tests
 ```
 
-Current test suite: **7 passing tests**.
+Current test suite: **8 passing tests**.
 
 ## Current Status
 
