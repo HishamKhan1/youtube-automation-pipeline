@@ -3,6 +3,61 @@ import json
 import base64
 from config import DEFAULT_TEXT_MODEL, IMAGE_MODEL
 from PIL import Image, ImageDraw, ImageFont
+from retry import run_with_retry
+from cost_tracking import (
+    record_openai_image_usage,
+    record_openai_response_usage
+)
+
+def should_retry_thumbnail_error(error):
+
+    status_code = getattr(
+        error,
+        "status_code",
+        None
+    )
+
+    retryable_status_codes = {
+        408,
+        409,
+        429,
+        500,
+        502,
+        503,
+        504
+    }
+
+    if status_code in retryable_status_codes:
+        return True
+
+    error_name = type(error).__name__
+
+    if error_name in {
+        "APIConnectionError",
+        "APITimeoutError",
+        "RateLimitError"
+    }:
+        return True
+
+    return False
+
+def is_thumbnail_moderation_error(error):
+
+    status_code = getattr(
+        error,
+        "status_code",
+        None
+    )
+
+    error_text = str(error).lower()
+
+    return (
+        status_code == 400
+        and (
+            "moderation_blocked" in error_text
+            or "safety system" in error_text
+        )
+    )
 
 def save_thumbnail_plan(
     project_folder,
@@ -33,13 +88,14 @@ def save_thumbnail_plan(
     
 def generate_thumbnail_plan(
     client,
+    project_folder,
     metadata,
-    completed_stories
+    stories
 ):
 
     story_titles = []
 
-    for story in completed_stories:
+    for story in stories:
 
         if isinstance(story, dict):
             story_titles.append(
@@ -53,7 +109,10 @@ def generate_thumbnail_plan(
     )
 
     prompt = f"""
-Create a YouTube thumbnail concept for an original horror story compilation.
+Create a YouTube thumbnail concept for an original horror story compilation aimed at an older audience.
+
+The thumbnail should feel tense, cinematic, mature, and highly clickable.
+Aim for suspense, psychological horror, or realistic danger rather than cheesy horror.
 
 YOUTUBE TITLE:
 {metadata["title"]}
@@ -73,23 +132,33 @@ OVERLAY TEXT RULES:
 - Very easy to read
 - Do not just repeat the full YouTube title
 - Make it intriguing
-- Horror tone
+- Mature horror / suspense tone
 
 IMAGE PROMPT RULES:
 - 16:9 YouTube thumbnail composition
-- Dark cinematic horror
+- Dark cinematic suspense / horror
 - High contrast
 - One strong focal subject
 - Simple composition, not cluttered
-- Theme should clearly relate to creepy late-night messages
-- Smartphone or message notification can be a major visual element
+- Theme should fit an adult horror audience
+- The image can include confrontation, pursuit, being watched, or a tense face-to-face moment
+- A phone, notification, or technology element can be included when relevant, but it does not need to be the main focus
+- Strong visual tension is preferred over a literal representation of the story
+- Use realistic locations such as apartments, hallways, parking lots, cars, streets, doorways, or houses at night
 - Leave some empty space for overlay text
+- No gore, blood, graphic injury, or extreme violence
 - DO NOT include any words, letters, captions, logos, watermarks, or readable text in the generated image
 """
 
     response = client.responses.create(
         model=DEFAULT_TEXT_MODEL,
         input=prompt
+    )
+
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "thumbnail_plan_generation"
     )
 
     thumbnail_plan = json.loads(
@@ -106,14 +175,89 @@ def generate_thumbnail_image(
 
     print("\nGENERATING THUMBNAIL IMAGE...")
 
-    result = client.images.generate(
-        model=IMAGE_MODEL,
-        prompt=thumbnail_plan["image_prompt"],
-        size="1536x864",
-        quality="medium",
-        output_format="png"
-    )
+    primary_prompt = thumbnail_plan["image_prompt"]
 
+    fallback_prompt = """
+        16:9 YouTube thumbnail composition for a mature cinematic horror and suspense channel.
+
+        Create a dark, realistic, atmospheric scene with one strong focal point.
+
+        Use a simple setting that could fit a wide range of unsettling stories, such as:
+        - a dim hallway
+        - an empty road at night
+        - a shadowy doorway
+        - a dark apartment interior
+        - a rainy window
+        - an isolated building
+
+        The image should feel mysterious and tense without showing explicit danger.
+
+        Use cinematic lighting, strong contrast, realistic photography, subtle shadows, and a serious suspenseful mood.
+
+        Keep the composition clean and easy to understand at thumbnail size.
+
+        Leave clear negative space on the left side for title text.
+
+        No gore.
+        No injuries.
+        No weapons.
+        No attacks.
+        No graphic violence.
+        No disturbing facial expressions.
+        No supernatural creatures.
+        No readable text.
+        No letters.
+        No captions.
+        No logos.
+        No watermarks.
+    """
+
+    try:
+        result = run_with_retry(
+            client.images.generate,
+            model=IMAGE_MODEL,
+            prompt=primary_prompt,
+            size="1536x864",
+            quality="medium",
+            output_format="png",
+            attempts=3,
+            delay_seconds=2,
+            should_retry=should_retry_thumbnail_error
+        )
+
+    except Exception as e:
+
+        if not is_thumbnail_moderation_error(e):
+            raise
+
+        print(
+            "\nPRIMARY THUMBNAIL PROMPT "
+            "BLOCKED BY MODERATION"
+        )
+
+        print(
+            "\nTRYING FALLBACK SAFE PROMPT..."
+        )
+
+        result = run_with_retry(
+            client.images.generate,
+            model=IMAGE_MODEL,
+            prompt=fallback_prompt,
+            size="1536x864",
+            quality="medium",
+            output_format="png",
+            attempts=3,
+            delay_seconds=2,
+            should_retry=should_retry_thumbnail_error
+        )
+
+    record_openai_image_usage(
+        project_folder,
+        result,
+        "thumbnail_image",
+        IMAGE_MODEL
+    )
+    
     image_data = base64.b64decode(
         result.data[0].b64_json
     )

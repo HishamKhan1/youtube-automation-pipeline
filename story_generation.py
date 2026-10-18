@@ -1,16 +1,20 @@
 import json
 from config import DEFAULT_TEXT_MODEL, STORY_MODEL
+from cost_tracking import record_openai_response_usage
 
+def generate_idea(
+    client,
+    minimum_stories=7,
+    maximum_stories=12
+):
 
-def generate_idea(client):
-
-    prompt = """
+    prompt = f"""
     Generate ONE idea for a YouTube horror-story compilation.
 
     The channel publishes original fictional horror stories written
     to feel like believable experiences told by real people.
 
-    The video should contain between 7 and 12 stories.
+    The video should contain between {minimum_stories} and {maximum_stories} stories.
 
     The concept should be strong enough to create a clickable
     YouTube title while also being broad enough to support
@@ -85,6 +89,12 @@ def generate_idea(client):
     response = client.responses.create(
         model=DEFAULT_TEXT_MODEL,
         input=prompt
+    )
+    
+    record_openai_response_usage(
+        None,
+        response,
+        "video_idea_generation"
     )
 
     idea = json.loads(response.output_text)
@@ -238,6 +248,12 @@ def generate_story_ideas(
         }
     )
 
+    record_openai_response_usage(
+        None,
+        response,
+        "story_ideas_generation"
+    )
+    
     story_ideas = json.loads(response.output_text)
 
     return story_ideas
@@ -354,12 +370,19 @@ def select_best_stories(client, video_idea, story_ideas):
         }
     )
 
+    record_openai_response_usage(
+        None,
+        response,
+        "story_selection"
+    )
+    
     selection = json.loads(response.output_text)
 
     return selection["selected_ids"]
 
 def get_replacement_story(
     client,
+    project_folder,
     video_idea,
     all_story_ideas,
     selected_stories,
@@ -451,6 +474,12 @@ def get_replacement_story(
         }
     )
 
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "replacement_story_selection"
+    )
+
     result = json.loads(response.output_text)
 
     replacement_id = result["replacement_id"]
@@ -462,7 +491,12 @@ def get_replacement_story(
 
     return None
 
-def evaluate_premise(client, video_idea, story_idea):
+def evaluate_premise(
+    client,
+    project_folder,
+    video_idea,
+    story_idea
+):
 
     prompt = f"""
     You are checking a story premise before it is turned into a
@@ -613,6 +647,12 @@ def evaluate_premise(client, video_idea, story_idea):
             }
         }
     )
+    
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "premise_evaluation"
+    )
 
     evaluation = json.loads(response.output_text)
 
@@ -629,7 +669,13 @@ def evaluate_premise(client, video_idea, story_idea):
 
     return evaluation
 
-def revise_premise(client, video_idea, story_idea, evaluation):
+def revise_premise(
+    client,
+    project_folder,
+    video_idea,
+    story_idea,
+    evaluation
+):
 
     problems_text = "\n".join(
         f"- {problem}"
@@ -701,13 +747,24 @@ def revise_premise(client, video_idea, story_idea, evaluation):
         input=prompt
     )
 
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "premise_revision"
+    )
+    
     revised_story_idea = story_idea.copy()
 
     revised_story_idea["premise"] = response.output_text.strip()
 
     return revised_story_idea
 
-def prepare_premise(client, video_idea, story_idea):
+def prepare_premise(
+    client,
+    project_folder,
+    video_idea,
+    story_idea
+):
 
     MAX_PREMISE_REVISIONS = 2
 
@@ -722,6 +779,7 @@ def prepare_premise(client, video_idea, story_idea):
 
         evaluation = evaluate_premise(
             client,
+            project_folder,
             video_idea,
             current_story_idea
         )
@@ -753,6 +811,7 @@ def prepare_premise(client, video_idea, story_idea):
 
             current_story_idea = revise_premise(
                 client,
+                project_folder,
                 video_idea,
                 current_story_idea,
                 evaluation
@@ -767,7 +826,12 @@ def prepare_premise(client, video_idea, story_idea):
 
             return None
 
-def generate_narrator_profile(client, video_idea, story_idea):
+def generate_narrator_profile(
+    client,
+    project_folder,
+    video_idea,
+    story_idea
+):
 
     prompt = f"""
     Create a believable narrator profile for this horror story.
@@ -857,14 +921,23 @@ def generate_narrator_profile(client, video_idea, story_idea):
             }
         }
     )
+    
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "narrator_profile_generation"
+    )
 
     return json.loads(response.output_text)
 
 def generate_full_story(
     client,
+    project_folder,
     video_idea,
     story_idea,
-    narrator_profile
+    narrator_profile,
+    minimum_words=800,
+    maximum_words=1100
 ):
 
     prompt = f"""
@@ -899,7 +972,8 @@ def generate_full_story(
 
     
     TARGET LENGTH:
-    Approximately 800-1100 words.
+
+    Approximately {minimum_words}-{maximum_words} words.
 
     CORE STYLE:
     - Write like a normal person describing a disturbing experience
@@ -1103,9 +1177,21 @@ def generate_full_story(
         input=prompt
     )
 
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "full_story_generation"
+    )
+    
     return response.output_text
 
-def evaluate_story(client, video_idea, story_idea, story):
+def evaluate_story(
+    client,
+    project_folder,
+    video_idea,
+    story_idea,
+    story
+):
 
     prompt = f"""
     You are a strict quality-control editor for a YouTube horror
@@ -1261,9 +1347,22 @@ def evaluate_story(client, video_idea, story_idea, story):
         }
     )
 
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "story_evaluation"
+    )
+    
     return json.loads(response.output_text)
 
-def revise_story(client, video_idea, story_idea, story, evaluation):
+def revise_story(
+    client,
+    project_folder,
+    video_idea,
+    story_idea,
+    story,
+    evaluation
+):
 
     problems_text = "\n".join(
         f"- {problem}"
@@ -1373,10 +1472,17 @@ def revise_story(client, video_idea, story_idea, story, evaluation):
         input=prompt
     )
 
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "story_revision"
+    )
+    
     return response.output_text
 
 def prepare_story(
     client,
+    project_folder,
     video_idea,
     story_idea,
     story
@@ -1395,6 +1501,7 @@ def prepare_story(
 
         evaluation = evaluate_story(
             client,
+            project_folder,
             video_idea,
             story_idea,
             current_story
@@ -1444,6 +1551,7 @@ def prepare_story(
 
             current_story = revise_story(
                 client,
+                project_folder,
                 video_idea,
                 story_idea,
                 current_story,

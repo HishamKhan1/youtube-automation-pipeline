@@ -1,7 +1,7 @@
 import os
 import json
 from config import DEFAULT_TEXT_MODEL
-
+from cost_tracking import record_openai_response_usage
 
 def save_youtube_metadata(
     project_folder,
@@ -32,13 +32,14 @@ def save_youtube_metadata(
     
 def generate_youtube_metadata(
     client,
+    project_folder,
     video_idea,
-    selected_stories
+    stories
 ):
 
     story_titles = []
-    story_count = len(selected_stories)
-    for story in selected_stories:
+    story_count = len(stories)
+    for story in stories:
 
         if isinstance(story, dict):
             story_titles.append(
@@ -94,6 +95,12 @@ DESCRIPTION RULES:
     response = client.responses.create(
         model=DEFAULT_TEXT_MODEL,
         input=prompt
+    )
+
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "youtube_metadata_generation"
     )
 
     metadata = json.loads(

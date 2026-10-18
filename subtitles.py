@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 from difflib import SequenceMatcher
-
+from cost_tracking import record_openai_transcription_usage
 
 def normalize_subtitle_word(word):
 
@@ -343,8 +343,9 @@ def build_srt_from_blocks(
 
 def get_word_timestamps(
     client,
+    project_folder,
     audio_file
-    ):
+):
 
     print(
         f"\nGETTING WORD TIMESTAMPS: {audio_file}"
@@ -360,10 +361,16 @@ def get_word_timestamps(
             language="en"
         )
 
+        record_openai_transcription_usage(
+            project_folder,
+            transcription.duration,
+            model="whisper-1"
+        )
     return transcription.words
 
 def generate_word_timed_subtitles(
     client,
+    project_folder,
     story_file,
     audio_file,
     subtitle_file
@@ -388,6 +395,7 @@ def generate_word_timed_subtitles(
 
     timestamp_words = get_word_timestamps(
         client,
+        project_folder,
         audio_file
     )
 
@@ -493,6 +501,7 @@ def generate_all_story_subtitles(
 
         generate_word_timed_subtitles(
             client,
+            project_folder,
             story_file,
             audio_file,
             subtitle_file
