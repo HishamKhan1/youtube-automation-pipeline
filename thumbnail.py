@@ -150,9 +150,19 @@ IMAGE PROMPT RULES:
 - DO NOT include any words, letters, captions, logos, watermarks, or readable text in the generated image
 """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_thumbnail_error
     )
 
     record_openai_response_usage(

@@ -2,6 +2,43 @@ import os
 import json
 from config import DEFAULT_TEXT_MODEL
 from cost_tracking import record_openai_response_usage
+from retry import run_with_retry
+
+
+
+def should_retry_openai_error(
+    error
+):
+
+    status_code = getattr(
+        error,
+        "status_code",
+        None
+    )
+
+    retryable_status_codes = {
+        408,
+        409,
+        429,
+        500,
+        502,
+        503,
+        504
+    }
+
+    if status_code in retryable_status_codes:
+        return True
+
+    error_name = type(error).__name__
+
+    if error_name in {
+        "APIConnectionError",
+        "APITimeoutError",
+        "RateLimitError"
+    }:
+        return True
+
+    return False
 
 def save_youtube_metadata(
     project_folder,
@@ -92,9 +129,19 @@ DESCRIPTION RULES:
 - Do not reveal endings
 """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     record_openai_response_usage(

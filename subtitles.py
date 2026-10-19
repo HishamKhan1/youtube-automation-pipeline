@@ -3,6 +3,8 @@ import re
 import subprocess
 from difflib import SequenceMatcher
 from cost_tracking import record_openai_transcription_usage
+from retry import run_with_retry
+
 
 def normalize_subtitle_word(word):
 
@@ -351,21 +353,34 @@ def get_word_timestamps(
         f"\nGETTING WORD TIMESTAMPS: {audio_file}"
     )
 
-    with open(audio_file, "rb") as audio:
+    def transcribe_audio():
 
-        transcription = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio,
-            response_format="verbose_json",
-            timestamp_granularities=["word"],
-            language="en"
-        )
+        with open(
+            audio_file,
+            "rb"
+        ) as audio:
 
-        record_openai_transcription_usage(
-            project_folder,
-            transcription.duration,
-            model="whisper-1"
-        )
+            return client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio,
+                response_format="verbose_json",
+                timestamp_granularities=["word"],
+                language="en"
+            )
+
+    transcription = run_with_retry(
+        transcribe_audio,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_transcription_error
+    )
+
+    record_openai_transcription_usage(
+        project_folder,
+        transcription.duration,
+        model="whisper-1"
+    )
+
     return transcription.words
 
 def generate_word_timed_subtitles(
@@ -684,7 +699,39 @@ def create_subtitle_preview(
         f"SUBTITLE PREVIEW SAVED: {output_file}"
     )
 
+def should_retry_transcription_error(
+    error
+):
 
+    status_code = getattr(
+        error,
+        "status_code",
+        None
+    )
+
+    retryable_status_codes = {
+        408,
+        409,
+        429,
+        500,
+        502,
+        503,
+        504
+    }
+
+    if status_code in retryable_status_codes:
+        return True
+
+    error_name = type(error).__name__
+
+    if error_name in {
+        "APIConnectionError",
+        "APITimeoutError",
+        "RateLimitError"
+    }:
+        return True
+
+    return False
 
 
 

@@ -1,6 +1,41 @@
 import json
 import re
 from config import DEFAULT_TEXT_MODEL
+from retry import run_with_retry
+
+def should_retry_openai_error(
+    error
+):
+
+    status_code = getattr(
+        error,
+        "status_code",
+        None
+    )
+
+    retryable_status_codes = {
+        408,
+        409,
+        429,
+        500,
+        502,
+        503,
+        504
+    }
+
+    if status_code in retryable_status_codes:
+        return True
+
+    error_name = type(error).__name__
+
+    if error_name in {
+        "APIConnectionError",
+        "APITimeoutError",
+        "RateLimitError"
+    }:
+        return True
+
+    return False
 
 def split_story_into_visual_scenes(
     story_text,
@@ -142,42 +177,52 @@ def generate_visual_plan(
     Return one result for every provided scene.
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "visual_plan",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "scenes": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "scene_number": {
-                                        "type": "integer"
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "visual_plan",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "scenes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "scene_number": {
+                                            "type": "integer"
+                                        },
+                                        "visual_prompt": {
+                                            "type": "string"
+                                        }
                                     },
-                                    "visual_prompt": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "scene_number",
-                                    "visual_prompt"
-                                ],
-                                "additionalProperties": False
+                                    "required": [
+                                        "scene_number",
+                                        "visual_prompt"
+                                    ],
+                                    "additionalProperties": False
+                                }
                             }
-                        }
-                    },
-                    "required": ["scenes"],
-                    "additionalProperties": False
+                        },
+                        "required": ["scenes"],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     visual_plan = json.loads(

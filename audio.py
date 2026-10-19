@@ -2,10 +2,45 @@ import os
 from config import TTS_MODEL, DEFAULT_VOICE_ID
 import subprocess
 import tempfile
+from retry import run_with_retry
 from cost_tracking import (
     record_cost_event,
     get_usage_totals
 )
+
+def should_retry_elevenlabs_error(
+    error
+):
+
+    status_code = getattr(
+        error,
+        "status_code",
+        None
+    )
+
+    retryable_status_codes = {
+        408,
+        409,
+        429,
+        500,
+        502,
+        503,
+        504
+    }
+
+    if status_code in retryable_status_codes:
+        return True
+
+    error_name = type(error).__name__
+
+    if error_name in {
+        "ConnectionError",
+        "TimeoutError",
+        "RateLimitError"
+    }:
+        return True
+
+    return False
 
 def split_story_for_tts(text, max_chars=9000):
 
@@ -197,15 +232,26 @@ def generate_story_audio(
                 f"chunk_{index:03d}.mp3"
             )
 
-            audio = (
-                elevenlabs
-                .text_to_speech
-                .convert(
-                    voice_id=voice_id,
-                    text=chunk,
-                    model_id=TTS_MODEL,
-                    output_format="mp3_44100_128"
+            def generate_audio_chunk():
+
+                audio_stream = (
+                    elevenlabs.text_to_speech.convert(
+                        voice_id=voice_id,
+                        text=chunk,
+                        model_id=TTS_MODEL,
+                        output_format="mp3_44100_128"
+                    )
                 )
+
+                return b"".join(
+                    audio_stream
+                )
+
+            audio_data = run_with_retry(
+                generate_audio_chunk,
+                attempts=3,
+                delay_seconds=2,
+                should_retry=should_retry_elevenlabs_error
             )
 
             with open(
@@ -213,12 +259,9 @@ def generate_story_audio(
                 "wb"
             ) as output_file:
 
-                for audio_chunk in audio:
-
-                    if audio_chunk:
-                        output_file.write(
-                            audio_chunk
-                        )
+                output_file.write(
+                    audio_data
+                )
 
             chunk_files.append(
                 chunk_file
@@ -233,7 +276,7 @@ def generate_story_audio(
                 usage_unit="characters",
                 model=TTS_MODEL
             )
-            
+
         concat_file = os.path.join(
             temp_folder,
             "concat.txt"
@@ -247,10 +290,9 @@ def generate_story_audio(
 
             for chunk_file in chunk_files:
 
-                safe_path = (
-                    os.path.abspath(chunk_file)
-                    .replace("\\", "/")
-                    .replace("'", "'\\''")
+                safe_path = chunk_file.replace(
+                    "\\",
+                    "/"
                 )
 
                 file.write(
@@ -295,6 +337,7 @@ def generate_story_audio(
         if os.path.exists(
             audio_file_path
         ):
+
             os.remove(
                 audio_file_path
             )

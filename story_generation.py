@@ -1,6 +1,42 @@
 import json
 from config import DEFAULT_TEXT_MODEL, STORY_MODEL
 from cost_tracking import record_openai_response_usage
+from retry import run_with_retry
+
+
+def should_retry_openai_error(
+    error
+):
+
+    status_code = getattr(
+        error,
+        "status_code",
+        None
+    )
+
+    retryable_status_codes = {
+        408,
+        409,
+        429,
+        500,
+        502,
+        503,
+        504
+    }
+
+    if status_code in retryable_status_codes:
+        return True
+
+    error_name = type(error).__name__
+
+    if error_name in {
+        "APIConnectionError",
+        "APITimeoutError",
+        "RateLimitError"
+    }:
+        return True
+
+    return False
 
 def generate_idea(
     client,
@@ -86,9 +122,19 @@ def generate_idea(
     }
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
     
     record_openai_response_usage(
@@ -206,46 +252,56 @@ def generate_story_ideas(
     Do not mention Reddit or AI.
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "story_ideas",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "stories": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "id": {
-                                        "type": "integer"
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "story_ideas",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "stories": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "integer"
+                                        },
+                                        "title": {
+                                            "type": "string"
+                                        },
+                                        "premise": {
+                                            "type": "string"
+                                        }
                                     },
-                                    "title": {
-                                        "type": "string"
-                                    },
-                                    "premise": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "id",
-                                    "title",
-                                    "premise"
-                                ],
-                                "additionalProperties": False
+                                    "required": [
+                                        "id",
+                                        "title",
+                                        "premise"
+                                    ],
+                                    "additionalProperties": False
+                                }
                             }
-                        }
-                    },
-                    "required": ["stories"],
-                    "additionalProperties": False
+                        },
+                        "required": ["stories"],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     record_openai_response_usage(
@@ -345,29 +401,39 @@ def select_best_stories(client, video_idea, story_ideas):
     Return ONLY the IDs of the selected stories.
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "selected_stories",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "selected_ids": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer"
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "selected_stories",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "selected_ids": {
+                                "type": "array",
+                                "items": {
+                                    "type": "integer"
+                                }
                             }
-                        }
-                    },
-                    "required": ["selected_ids"],
-                    "additionalProperties": False
+                        },
+                        "required": ["selected_ids"],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     record_openai_response_usage(
@@ -452,26 +518,36 @@ def get_replacement_story(
     Return ONLY the ID of the best replacement.
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "replacement_story",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "replacement_id": {
-                            "type": "integer"
-                        }
-                    },
-                    "required": ["replacement_id"],
-                    "additionalProperties": False
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "replacement_story",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "replacement_id": {
+                                "type": "integer"
+                            }
+                        },
+                        "required": ["replacement_id"],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     record_openai_response_usage(
@@ -609,43 +685,53 @@ def evaluate_premise(
     problems list.
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "premise_evaluation",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "logic": {
-                            "type": "integer"
-                        },
-                        "realism": {
-                            "type": "integer"
-                        },
-                        "story_potential": {
-                            "type": "integer"
-                        },
-                        "problems": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "premise_evaluation",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "logic": {
+                                "type": "integer"
+                            },
+                            "realism": {
+                                "type": "integer"
+                            },
+                            "story_potential": {
+                                "type": "integer"
+                            },
+                            "problems": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
                             }
-                        }
-                    },
-                    "required": [
-                        "logic",
-                        "realism",
-                        "story_potential",
-                        "problems"
-                    ],
-                    "additionalProperties": False
+                        },
+                        "required": [
+                            "logic",
+                            "realism",
+                            "story_potential",
+                            "problems"
+                        ],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
     
     record_openai_response_usage(
@@ -742,9 +828,19 @@ def revise_premise(
     Keep it approximately 2-4 sentences.
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     record_openai_response_usage(
@@ -882,44 +978,54 @@ def generate_narrator_profile(
     Do not write the actual story.
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "narrator_profile",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "age": {
-                            "type": "integer"
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "narrator_profile",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "age": {
+                                "type": "integer"
+                            },
+                            "occupation": {
+                                "type": "string"
+                            },
+                            "personality": {
+                                "type": "string"
+                            },
+                            "speaking_style": {
+                                "type": "string"
+                            },
+                            "storytelling_style": {
+                                "type": "string"
+                            }
                         },
-                        "occupation": {
-                            "type": "string"
-                        },
-                        "personality": {
-                            "type": "string"
-                        },
-                        "speaking_style": {
-                            "type": "string"
-                        },
-                        "storytelling_style": {
-                            "type": "string"
-                        }
-                    },
-                    "required": [
-                        "age",
-                        "occupation",
-                        "personality",
-                        "speaking_style",
-                        "storytelling_style"
-                    ],
-                    "additionalProperties": False
+                        "required": [
+                            "age",
+                            "occupation",
+                            "personality",
+                            "speaking_style",
+                            "storytelling_style"
+                        ],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
     
     record_openai_response_usage(
@@ -1172,9 +1278,19 @@ def generate_full_story(
     Do not include commentary.
     """
 
-    response = client.responses.create(
-        model=STORY_MODEL,
-        input=prompt
+    def create_response():
+
+        return client.responses.create(
+            model=STORY_MODEL,
+            input=prompt
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     record_openai_response_usage(
@@ -1296,55 +1412,65 @@ def evaluate_story(
     Keep each problem description short and specific.
     """
 
-    response = client.responses.create(
-        model=DEFAULT_TEXT_MODEL,
-        input=prompt,
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "story_evaluation",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "pass": {
-                            "type": "boolean"
-                        },
-                        "logic": {
-                            "type": "integer"
-                        },
-                        "realism": {
-                            "type": "integer"
-                        },
-                        "voice": {
-                            "type": "integer"
-                        },
-                        "pacing": {
-                            "type": "integer"
-                        },
-                        "ending": {
-                            "type": "integer"
-                        },
-                        "problems": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
+    def create_response():
+
+        return client.responses.create(
+            model=DEFAULT_TEXT_MODEL,
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "story_evaluation",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "pass": {
+                                "type": "boolean"
+                            },
+                            "logic": {
+                                "type": "integer"
+                            },
+                            "realism": {
+                                "type": "integer"
+                            },
+                            "voice": {
+                                "type": "integer"
+                            },
+                            "pacing": {
+                                "type": "integer"
+                            },
+                            "ending": {
+                                "type": "integer"
+                            },
+                            "problems": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
                             }
-                        }
-                    },
-                    "required": [
-                        "pass",
-                        "logic",
-                        "realism",
-                        "voice",
-                        "pacing",
-                        "ending",
-                        "problems"
-                    ],
-                    "additionalProperties": False
+                        },
+                        "required": [
+                            "pass",
+                            "logic",
+                            "realism",
+                            "voice",
+                            "pacing",
+                            "ending",
+                            "problems"
+                        ],
+                        "additionalProperties": False
+                    }
                 }
             }
-        }
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     record_openai_response_usage(
@@ -1467,9 +1593,19 @@ def revise_story(
     Do not explain your changes.
     """
 
-    response = client.responses.create(
-        model=STORY_MODEL,
-        input=prompt
+    def create_response():
+
+        return client.responses.create(
+            model=STORY_MODEL,
+            input=prompt
+        )
+
+
+    response = run_with_retry(
+        create_response,
+        attempts=3,
+        delay_seconds=2,
+        should_retry=should_retry_openai_error
     )
 
     record_openai_response_usage(
