@@ -1,0 +1,28 @@
+{
+    "name": "After Dark Archive",
+    "slug": "after_dark_archive",
+
+    "content_type": "fictional_horror_compilation",
+
+    "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+
+    "background_file": "assets/backgrounds/night_drive.mp4",
+    "ambience_file": "assets/ambience/rain.mp3",
+
+    "story_count": {
+        "minimum": 7,
+        "maximum": 12
+    },
+
+    "story_length": {
+        "minimum_words": 800,
+        "maximum_words": 1100
+    },
+
+    "thumbnail_style": "cinematic_horror",
+
+    "formats": {
+        "longform": true,
+        "shorts": true
+    }
+}
