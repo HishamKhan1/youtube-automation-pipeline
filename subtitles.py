@@ -463,6 +463,102 @@ def generate_word_timed_subtitles(
         f"SUBTITLES SAVED: {subtitle_file}"
     )
 
+def all_story_subtitles_are_valid(
+    project_folder,
+    story_count
+):
+
+    found_story = False
+
+    for number in range(
+        1,
+        story_count + 1
+    ):
+
+        story_file = os.path.join(
+            project_folder,
+            f"story_{number:02d}.txt"
+        )
+
+        if not os.path.exists(
+            story_file
+        ):
+            continue
+
+        found_story = True
+
+        subtitle_file = os.path.join(
+            project_folder,
+            "subtitles",
+            f"story_{number:02d}.srt"
+        )
+
+        if not os.path.exists(
+            subtitle_file
+        ):
+            return False
+
+        if os.path.getsize(
+            subtitle_file
+        ) == 0:
+            return False
+
+    return found_story
+
+def all_subtitled_videos_are_valid(
+    project_folder,
+    story_count
+):
+
+    found_source_video = False
+
+    for number in range(
+        1,
+        story_count + 1
+    ):
+
+        video_file = os.path.join(
+            project_folder,
+            "videos",
+            f"story_{number:02d}_video.mp4"
+        )
+
+        subtitle_file = os.path.join(
+            project_folder,
+            "subtitles",
+            f"story_{number:02d}.srt"
+        )
+
+        if not os.path.exists(
+            video_file
+        ):
+            continue
+
+        if not os.path.exists(
+            subtitle_file
+        ):
+            continue
+
+        found_source_video = True
+
+        output_file = os.path.join(
+            project_folder,
+            "subtitled_videos",
+            f"story_{number:02d}_subtitled.mp4"
+        )
+
+        if not os.path.exists(
+            output_file
+        ):
+            return False
+
+        if os.path.getsize(
+            output_file
+        ) < 1000:
+            return False
+
+    return found_source_video
+
 def generate_all_story_subtitles(
     client,
     project_folder,

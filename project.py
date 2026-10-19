@@ -7,7 +7,8 @@ def save_video_info(
     selected_stories,
     all_story_ideas,
     attempted_story_ids=None,
-    narrator_profiles=None
+    narrator_profiles=None,
+    channel_slug=None
 ):
 
     if attempted_story_ids is None:
@@ -22,7 +23,8 @@ def save_video_info(
         "selected_stories": selected_stories,
         "all_story_ideas": all_story_ideas,
         "attempted_story_ids": list(attempted_story_ids),
-        "narrator_profiles": narrator_profiles
+        "narrator_profiles": narrator_profiles,
+        "channel_slug": channel_slug
     }
 
     file_path = os.path.join(
@@ -55,6 +57,60 @@ def load_video_info(output_folder):
         video_info = json.load(file)
 
     return video_info
+
+def completed_story_files_are_valid(
+    project_folder,
+    selected_stories
+):
+
+    final_video = os.path.join(
+        project_folder,
+        "final_video_complete.mp4"
+    )
+
+    # Support older finished projects that
+    # were created before the marker existed.
+    if (
+        os.path.exists(final_video)
+        and os.path.getsize(final_video) > 1000
+    ):
+        return True
+
+    completion_marker = os.path.join(
+        project_folder,
+        "stories_complete.marker"
+    )
+
+    if not os.path.exists(
+        completion_marker
+    ):
+        return False
+
+    found_story = False
+
+    for number, story in enumerate(
+        selected_stories,
+        start=1
+    ):
+
+        story_file = os.path.join(
+            project_folder,
+            f"story_{number:02d}.txt"
+        )
+
+        if not os.path.exists(
+            story_file
+        ):
+            continue
+
+        found_story = True
+
+        if os.path.getsize(
+            story_file
+        ) == 0:
+            return False
+
+    return found_story
 
 def get_completed_stories(
     project_folder,

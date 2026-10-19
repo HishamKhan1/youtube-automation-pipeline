@@ -106,46 +106,42 @@ def audio_file_is_valid(audio_file_path):
 
         return False
 
-def audio_file_is_valid(audio_file_path):
+def all_story_audio_is_valid(
+    project_folder,
+    story_count
+):
 
-    if not os.path.exists(audio_file_path):
-        return False
+    found_story = False
 
-    if os.path.getsize(audio_file_path) < 1000:
-        return False
-
-    command = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        audio_file_path
-    ]
-
-    try:
-
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-
-        duration = float(
-            result.stdout.strip()
-        )
-
-        return duration > 1
-
-    except (
-        subprocess.CalledProcessError,
-        ValueError
+    for number in range(
+        1,
+        story_count + 1
     ):
 
-        return False
+        story_file = os.path.join(
+            project_folder,
+            f"story_{number:02d}.txt"
+        )
+
+        if not os.path.exists(
+            story_file
+        ):
+            continue
+
+        found_story = True
+
+        audio_file = os.path.join(
+            project_folder,
+            "audio",
+            f"story_{number:02d}.mp3"
+        )
+
+        if not audio_file_is_valid(
+            audio_file
+        ):
+            return False
+
+    return found_story
 
 def generate_story_audio(
     elevenlabs,

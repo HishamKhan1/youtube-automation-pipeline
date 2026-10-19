@@ -52,6 +52,49 @@ def create_story_video(
         f"STORY VIDEO SAVED: {output_file}"
     )
 
+def all_story_videos_are_valid(
+    project_folder,
+    story_count
+):
+
+    found_audio = False
+
+    for number in range(
+        1,
+        story_count + 1
+    ):
+
+        audio_file = os.path.join(
+            project_folder,
+            "audio",
+            f"story_{number:02d}.mp3"
+        )
+
+        if not os.path.exists(
+            audio_file
+        ):
+            continue
+
+        found_audio = True
+
+        video_file = os.path.join(
+            project_folder,
+            "videos",
+            f"story_{number:02d}_video.mp4"
+        )
+
+        if not os.path.exists(
+            video_file
+        ):
+            return False
+
+        if os.path.getsize(
+            video_file
+        ) < 1000:
+            return False
+
+    return found_audio
+
 def generate_all_story_videos(
     project_folder,
     story_count,
@@ -290,6 +333,54 @@ def create_story_transition(
         f"TRANSITION SAVED: {output_file}"
     )
 
+def all_story_transitions_are_valid(
+    project_folder,
+    selected_stories
+):
+
+    completed_number = 0
+    found_story = False
+
+    for source_number, story in enumerate(
+        selected_stories,
+        start=1
+    ):
+
+        story_video = os.path.join(
+            project_folder,
+            "subtitled_videos",
+            f"story_{source_number:02d}_subtitled.mp4"
+        )
+
+        if not os.path.exists(
+            story_video
+        ):
+            continue
+
+        found_story = True
+        completed_number += 1
+
+        if completed_number == 1:
+            continue
+
+        transition_file = os.path.join(
+            project_folder,
+            "transitions",
+            f"story_{source_number:02d}_transition.mp4"
+        )
+
+        if not os.path.exists(
+            transition_file
+        ):
+            return False
+
+        if os.path.getsize(
+            transition_file
+        ) < 1000:
+            return False
+
+    return found_story
+
 def generate_all_story_transitions(
     project_folder,
     selected_stories
@@ -305,41 +396,39 @@ def generate_all_story_transitions(
         exist_ok=True
     )
 
-    for number, story in enumerate(
+    completed_number = 0
+
+    for source_number, story in enumerate(
         selected_stories,
         start=1
     ):
 
-        if number == 1:
-            continue
-
         story_video = os.path.join(
             project_folder,
             "subtitled_videos",
-            f"story_{number:02d}_subtitled.mp4"
+            f"story_{source_number:02d}_subtitled.mp4"
         )
 
         if not os.path.exists(story_video):
             print(
-                f"STORY {number} HAS NO VIDEO "
+                f"STORY {source_number} HAS NO VIDEO "
                 f"- SKIPPING TRANSITION"
             )
             continue
 
-        transition_file = os.path.join(
-            transition_folder,
-            f"story_{number:02d}_transition.mp4"
-        )
+        completed_number += 1
 
-        if os.path.exists(transition_file):
-            print(
-                f"TRANSITION ALREADY EXISTS "
-                f"- SKIPPING: {transition_file}"
-            )
+        # First completed story does not need a transition
+        if completed_number == 1:
             continue
 
+        transition_file = os.path.join(
+            transition_folder,
+            f"story_{source_number:02d}_transition.mp4"
+        )
+
         create_story_transition(
-            number,
+            completed_number,
             story["title"],
             transition_file
         )
@@ -349,6 +438,8 @@ def escape_drawtext_text(text):
     text = text.replace("\\", "\\\\")
     text = text.replace(":", r"\:")
     text = text.replace("'", r"\'")
+    text = text.replace(",", r"\,")
+    text = text.replace(";", r"\;")
 
     return text
 

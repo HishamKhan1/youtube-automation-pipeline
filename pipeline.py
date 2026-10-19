@@ -13,6 +13,7 @@ from project import (
 
 from video import (
     generate_all_story_transitions,
+    all_story_transitions_are_valid,
     get_video_files_with_transitions,
     combine_story_videos,
     add_background_ambience
@@ -30,6 +31,46 @@ from thumbnail import (
     create_final_thumbnail
 )
 
+
+
+
+
+
+
+def json_file_is_valid(
+    file_path
+):
+
+    if not os.path.exists(
+        file_path
+    ):
+        return False
+
+    if os.path.getsize(
+        file_path
+    ) == 0:
+        return False
+
+    try:
+
+        with open(
+            file_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            json.load(
+                file
+            )
+
+        return True
+
+    except (
+        json.JSONDecodeError,
+        OSError
+    ):
+
+        return False
 
 def finalize_video_project(
     client,
@@ -141,7 +182,11 @@ def finalize_video_project(
         "transitions",
         generate_all_story_transitions,
         project_folder,
-        selected_stories
+        selected_stories,
+        completion_check=lambda: all_story_transitions_are_valid(
+            project_folder,
+            selected_stories
+        )
     )
 
     # -------------------------
@@ -173,7 +218,15 @@ def finalize_video_project(
         combine_story_videos,
         video_files,
         concat_file,
-        transition_video
+        transition_video,
+        completion_check=lambda: (
+            os.path.exists(
+                transition_video
+            )
+            and os.path.getsize(
+                transition_video
+            ) > 1000
+        )
     )
 
     # -------------------------
@@ -191,7 +244,15 @@ def finalize_video_project(
         add_background_ambience,
         transition_video,
         rain_file,
-        final_video
+        final_video,
+        completion_check=lambda: (
+            os.path.exists(
+                final_video
+            )
+            and os.path.getsize(
+                final_video
+            ) > 1000
+        )
     )
 
     # -------------------------
@@ -238,7 +299,10 @@ def finalize_video_project(
         project_folder,
         "metadata",
         prepare_metadata,
-        on_skip=prepare_metadata
+        on_skip=prepare_metadata,
+        completion_check=lambda: json_file_is_valid(
+            metadata_file
+        )
     )
     
     # -------------------------
@@ -287,7 +351,10 @@ def finalize_video_project(
         project_folder,
         "thumbnail_plan",
         prepare_thumbnail_plan,
-        on_skip=prepare_thumbnail_plan
+        on_skip=prepare_thumbnail_plan,
+        completion_check=lambda: json_file_is_valid(
+            thumbnail_plan_file
+        )
     )
 
     # -------------------------
@@ -326,7 +393,14 @@ def finalize_video_project(
         project_folder,
         "thumbnail_image",
         prepare_thumbnail_image,
-        skip_if_complete=False
+        completion_check=lambda: (
+            os.path.exists(
+                thumbnail_background
+            )
+            and os.path.getsize(
+                thumbnail_background
+            ) > 1000
+        )
     )
 
     # -------------------------
@@ -337,12 +411,25 @@ def finalize_video_project(
     # FINAL THUMBNAIL
     # -------------------------
 
+    thumbnail_final_file = os.path.join(
+        project_folder,
+        "thumbnail_final.png"
+    )
+
     run_stage(
         project_folder,
         "thumbnail_final",
         create_final_thumbnail,
         project_folder,
-        thumbnail_plan
+        thumbnail_plan,
+        completion_check=lambda: (
+            os.path.exists(
+                thumbnail_final_file
+            )
+            and os.path.getsize(
+                thumbnail_final_file
+            ) > 1000
+        )
     )
 
     # -------------------------

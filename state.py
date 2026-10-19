@@ -1,7 +1,7 @@
 import os
 import json
 from datetime import datetime, timezone
-
+import shutil
 
 STATE_FILE_NAME = "project_state.json"
 
@@ -68,23 +68,97 @@ def create_project_state(project_folder):
     return state
 
 
-def load_project_state(project_folder):
+def load_project_state(
+    project_folder
+):
 
     state_path = get_state_path(
         project_folder
     )
 
+    backup_path = state_path + ".bak"
+
     if not os.path.exists(state_path):
+
+        if os.path.exists(backup_path):
+
+            print(
+                "\nSTATE FILE MISSING "
+                "- RESTORING FROM BACKUP..."
+            )
+
+            shutil.copy2(
+                backup_path,
+                state_path
+            )
+
+            with open(
+                state_path,
+                "r",
+                encoding="utf-8"
+            ) as file:
+                return json.load(file)
+
         return create_project_state(
             project_folder
         )
 
-    with open(
-        state_path,
-        "r",
-        encoding="utf-8"
-    ) as file:
-        return json.load(file)
+    try:
+
+        with open(
+            state_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            return json.load(
+                file
+            )
+
+    except (
+        json.JSONDecodeError,
+        OSError
+    ):
+
+        print(
+            "\nSTATE FILE COULD NOT BE READ"
+        )
+
+        if os.path.exists(
+            backup_path
+        ):
+
+            print(
+                "RESTORING STATE FROM BACKUP..."
+            )
+
+            with open(
+                backup_path,
+                "r",
+                encoding="utf-8"
+            ) as file:
+
+                state = json.load(
+                    file
+                )
+
+            restore_temp_path = (
+                state_path + ".restore.tmp"
+            )
+
+            shutil.copy2(
+                backup_path,
+                restore_temp_path
+            )
+
+            os.replace(
+                restore_temp_path,
+                state_path
+            )
+
+            return state
+
+        raise
 
 
 def save_project_state(
@@ -99,6 +173,7 @@ def save_project_state(
     )
 
     temp_path = state_path + ".tmp"
+    backup_path = state_path + ".bak"
 
     with open(
         temp_path,
@@ -110,6 +185,15 @@ def save_project_state(
             state,
             file,
             indent=4
+        )
+
+    if os.path.exists(
+        state_path
+    ):
+
+        shutil.copy2(
+            state_path,
+            backup_path
         )
 
     os.replace(
@@ -137,6 +221,13 @@ def set_stage_status(
 
     state["stages"][stage]["status"] = status
     state["stages"][stage]["error"] = error
+
+    if status in {
+        "pending",
+        "running",
+        "failed"
+    }:
+        state["status"] = "in_progress"
 
     save_project_state(
         project_folder,
@@ -176,7 +267,7 @@ def mark_project_complete(
         project_folder,
         state
     )
-    
+
 def run_stage(
     project_folder,
     stage,
@@ -184,6 +275,7 @@ def run_stage(
     *args,
     skip_if_complete=True,
     on_skip=None,
+    completion_check=None,
     **kwargs
 ):
 
@@ -195,15 +287,35 @@ def run_stage(
         )
     ):
 
+        output_is_valid = True
+
+        if completion_check is not None:
+
+            output_is_valid = completion_check()
+
+        if output_is_valid:
+
+            print(
+                f"\n{stage.upper()} ALREADY COMPLETE "
+                f"- SKIPPING"
+            )
+
+            if on_skip is not None:
+                return on_skip()
+
+            return None
+
         print(
-            f"\n✓ {stage.upper()} ALREADY COMPLETE "
-            f"- SKIPPING"
+            f"\n{stage.upper()} WAS MARKED COMPLETE "
+            f"BUT OUTPUT IS MISSING OR INVALID "
+            f"- RERUNNING"
         )
 
-        if on_skip is not None:
-            return on_skip()
-
-        return None
+        set_stage_status(
+            project_folder,
+            stage,
+            "pending"
+        )
 
     print(
         f"\n▶ STARTING STAGE: "
@@ -254,8 +366,8 @@ def run_stage(
         f"{stage.upper()}"
     )
 
-    return result 
-    
+    return result
+
 def complete_stage_if_file_exists(
     project_folder,
     stage,
@@ -283,12 +395,12 @@ def complete_stage_if_file_exists(
             f"- MARKED {stage.upper()} COMPLETE"
         )
 
-    return True   
-    
-    
-    
-    
-    
-    
-    
-    
+    return True
+
+
+
+
+
+
+
+

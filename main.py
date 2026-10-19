@@ -45,14 +45,20 @@ from channel import (
 )
 
 from audio import (
-    generate_all_story_audio
+    generate_all_story_audio,
+    all_story_audio_is_valid
 )
 from subtitles import (
     generate_all_story_subtitles,
-    generate_all_subtitled_videos
+    generate_all_subtitled_videos,
+    all_story_subtitles_are_valid,
+    all_subtitled_videos_are_valid
 )
 
-from video import generate_all_story_videos
+from video import (
+    generate_all_story_videos,
+    all_story_videos_are_valid
+)
 
 from story_generation import (
     generate_idea,
@@ -67,7 +73,8 @@ from story_generation import (
 from project import (
     save_video_info,
     load_video_info,
-    choose_project_folder
+    choose_project_folder,
+    completed_story_files_are_valid
 )
 from state import (
     create_project_state,
@@ -651,6 +658,17 @@ def generate_project_stories(
 
     print("\nALL AVAILABLE STORIES COMPLETE!")
 
+    stories_complete_marker = os.path.join(
+        output_folder,
+        "stories_complete.marker"
+    )
+
+    with open(
+        stories_complete_marker,
+        "w",
+        encoding="utf-8"
+    ) as file:
+        file.write("complete")
 
 
 # # Generate, review, and save every selected story
@@ -693,7 +711,11 @@ run_stage(
     all_story_ideas,
     attempted_story_ids,
     narrator_profiles,
-    channel_config
+    channel_config,
+    completion_check=lambda: completed_story_files_are_valid(
+        output_folder,
+        selected_stories
+    )
 )
 
 run_stage(
@@ -703,7 +725,11 @@ run_stage(
     elevenlabs,
     output_folder,
     len(selected_stories),
-    channel_config["voice_id"]
+    channel_config["voice_id"],
+    completion_check=lambda: all_story_audio_is_valid(
+        output_folder,
+        len(selected_stories)
+    )
 )
 
 run_stage(
@@ -712,7 +738,11 @@ run_stage(
     generate_all_story_subtitles,
     client,
     output_folder,
-    len(selected_stories)
+    len(selected_stories),
+    completion_check=lambda: all_story_subtitles_are_valid(
+        output_folder,
+        len(selected_stories)
+    )
 )
 
 background_file = channel_config[
@@ -725,7 +755,11 @@ run_stage(
     generate_all_story_videos,
     output_folder,
     len(selected_stories),
-    background_file
+    background_file,
+    completion_check=lambda: all_story_videos_are_valid(
+        output_folder,
+        len(selected_stories)
+    )
 )
 
 run_stage(
@@ -733,5 +767,9 @@ run_stage(
     "subtitled_videos",
     generate_all_subtitled_videos,
     output_folder,
-    len(selected_stories)
+    len(selected_stories),
+    completion_check=lambda: all_subtitled_videos_are_valid(
+        output_folder,
+        len(selected_stories)
+    )
 )
