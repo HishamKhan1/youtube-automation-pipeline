@@ -60,6 +60,11 @@ from video import (
     all_story_videos_are_valid
 )
 
+from visuals import (
+    generate_all_visual_plans,
+    all_visual_plans_are_valid
+)
+
 from story_generation import (
     generate_idea,
     generate_story_ideas,

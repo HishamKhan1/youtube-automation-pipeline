@@ -10,6 +10,8 @@ DEFAULT_STAGES = [
     "idea",
     "story_selection",
     "stories",
+    "visual_plans",
+    "scene_images",
     "audio",
     "subtitles",
     "story_videos",

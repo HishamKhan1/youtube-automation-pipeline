@@ -1,7 +1,77 @@
+import os
 import json
 import re
-from config import DEFAULT_TEXT_MODEL
+import base64
+from config import (
+    DEFAULT_TEXT_MODEL,
+    IMAGE_MODEL
+)
 from retry import run_with_retry
+from cost_tracking import (
+    record_openai_response_usage,
+    record_openai_image_usage
+)
+
+def save_visual_plan(
+    project_folder,
+    story_number,
+    visual_plan
+):
+
+    visual_plan_folder = os.path.join(
+        project_folder,
+        "visual_plans"
+    )
+
+    os.makedirs(
+        visual_plan_folder,
+        exist_ok=True
+    )
+
+    file_path = os.path.join(
+        visual_plan_folder,
+        f"story_{story_number:02d}_visual_plan.json"
+    )
+
+    with open(
+        file_path,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        json.dump(
+            visual_plan,
+            file,
+            indent=2
+        )
+
+    return file_path
+
+def load_visual_plan(
+    project_folder,
+    story_number
+):
+
+    file_path = os.path.join(
+        project_folder,
+        "visual_plans",
+        f"story_{story_number:02d}_visual_plan.json"
+    )
+
+    if not os.path.exists(
+        file_path
+    ):
+        return None
+
+    with open(
+        file_path,
+        "r",
+        encoding="utf-8"
+    ) as file:
+
+        return json.load(
+            file
+        )
 
 def should_retry_openai_error(
     error
@@ -37,9 +107,31 @@ def should_retry_openai_error(
 
     return False
 
+def is_visual_moderation_error(
+    error
+):
+
+    status_code = getattr(
+        error,
+        "status_code",
+        None
+    )
+
+    error_text = str(
+        error
+    ).lower()
+
+    return (
+        status_code == 400
+        and (
+            "moderation_blocked" in error_text
+            or "safety system" in error_text
+        )
+    )
+
 def split_story_into_visual_scenes(
     story_text,
-    target_words=110
+    target_words=35
 ):
 
     sentences = re.split(
@@ -80,8 +172,98 @@ def split_story_into_visual_scenes(
 
     return scenes
 
+def validate_visual_plan(
+    visual_plan,
+    expected_scene_count
+):
+
+    if not isinstance(
+        visual_plan,
+        dict
+    ):
+        raise ValueError(
+            "Visual plan must be an object."
+        )
+
+    scenes = visual_plan.get(
+        "scenes"
+    )
+
+    if not isinstance(
+        scenes,
+        list
+    ):
+        raise ValueError(
+            "Visual plan 'scenes' must be a list."
+        )
+
+    if len(scenes) != expected_scene_count:
+        raise ValueError(
+            f"Visual plan returned "
+            f"{len(scenes)} scenes, "
+            f"expected {expected_scene_count}."
+        )
+
+    expected_numbers = list(
+        range(
+            1,
+            expected_scene_count + 1
+        )
+    )
+
+    actual_numbers = [
+        scene.get(
+            "scene_number"
+        )
+        for scene in scenes
+    ]
+
+    if actual_numbers != expected_numbers:
+        raise ValueError(
+            "Visual plan scene numbers "
+            "are missing, duplicated, or out of order."
+        )
+
+    for scene in scenes:
+
+        visual_prompt = scene.get(
+            "visual_prompt"
+        )
+
+        if (
+            not isinstance(
+                visual_prompt,
+                str
+            )
+            or not visual_prompt.strip()
+        ):
+            raise ValueError(
+                "Visual prompt cannot be empty."
+            )
+
+        allowed_motions = {
+            "slow_zoom_in",
+            "slow_zoom_out",
+            "pan_left",
+            "pan_right",
+            "static"
+        }
+
+        motion = scene.get(
+            "motion"
+        )
+
+        if motion not in allowed_motions:
+            raise ValueError(
+                f"Invalid visual motion: "
+                f"{motion}"
+            )
+
+    return True
+
 def generate_visual_plan(
     client,
+    project_folder,
     video_idea,
     story_idea,
     story_text,
@@ -174,6 +356,26 @@ def generate_visual_plan(
     - camera framing
     - mood
 
+    For each scene, also choose ONE motion style:
+
+    - slow_zoom_in:
+    use for tension, fear, discoveries, or important details
+
+    - slow_zoom_out:
+    use for isolation, aftermath, or revealing the environment
+
+    - pan_left:
+    use when exploring an environment or following visual detail
+
+    - pan_right:
+    use when exploring an environment or following visual detail
+
+    - static:
+    use when movement would distract from the scene
+
+    Do not use the same motion for every scene.
+    Vary motion naturally throughout the story.
+
     Return one result for every provided scene.
     """
 
@@ -200,11 +402,22 @@ def generate_visual_plan(
                                         },
                                         "visual_prompt": {
                                             "type": "string"
+                                        },
+                                        "motion": {
+                                            "type": "string",
+                                            "enum": [
+                                                "slow_zoom_in",
+                                                "slow_zoom_out",
+                                                "pan_left",
+                                                "pan_right",
+                                                "static"
+                                            ]
                                         }
                                     },
                                     "required": [
                                         "scene_number",
-                                        "visual_prompt"
+                                        "visual_prompt",
+                                        "motion"
                                     ],
                                     "additionalProperties": False
                                 }
@@ -225,13 +438,483 @@ def generate_visual_plan(
         should_retry=should_retry_openai_error
     )
 
+    record_openai_response_usage(
+        project_folder,
+        response,
+        "visual_plan_generation"
+    )
+
     visual_plan = json.loads(
         response.output_text
     )
 
+    validate_visual_plan(
+        visual_plan,
+        len(numbered_scenes)
+    )
+
+    for scene, narration_scene in zip(
+        visual_plan["scenes"],
+        numbered_scenes
+    ):
+        scene["narration"] = narration_scene[
+            "narration"
+        ]
+
     return visual_plan
 
+def prepare_visual_plan(
+    client,
+    project_folder,
+    story_number,
+    video_idea,
+    story_idea,
+    story_text,
+    narrator_profile
+):
 
+    expected_scene_count = len(
+        split_story_into_visual_scenes(
+            story_text
+        )
+    )
 
+    existing_plan = load_visual_plan(
+        project_folder,
+        story_number
+    )
 
+    if existing_plan is not None:
 
+        try:
+
+            validate_visual_plan(
+                existing_plan,
+                expected_scene_count
+            )
+
+            print(
+                f"VISUAL PLAN {story_number} "
+                f"ALREADY EXISTS - USING SAVED VERSION"
+            )
+
+            return existing_plan
+
+        except ValueError:
+
+            print(
+                f"VISUAL PLAN {story_number} "
+                f"IS INVALID - REGENERATING"
+            )
+
+    visual_plan = generate_visual_plan(
+        client,
+        project_folder,
+        video_idea,
+        story_idea,
+        story_text,
+        narrator_profile
+    )
+
+    save_visual_plan(
+        project_folder,
+        story_number,
+        visual_plan
+    )
+
+    return visual_plan
+
+def generate_all_visual_plans(
+    client,
+    project_folder,
+    video_idea,
+    selected_stories,
+    narrator_profiles
+):
+
+    visual_plans = {}
+
+    for story_number, story_idea in enumerate(
+        selected_stories,
+        start=1
+    ):
+
+        story_file = os.path.join(
+            project_folder,
+            f"story_{story_number:02d}.txt"
+        )
+
+        if not os.path.exists(
+            story_file
+        ):
+            print(
+                f"STORY {story_number} HAS NO FINAL STORY "
+                f"- SKIPPING VISUAL PLAN"
+            )
+            continue
+
+        with open(
+            story_file,
+            "r",
+            encoding="utf-8"
+        ) as file:
+            story_text = file.read()
+
+        narrator_profile = narrator_profiles.get(
+            str(story_number),
+            {}
+        )
+
+        visual_plan = prepare_visual_plan(
+            client,
+            project_folder,
+            story_number,
+            video_idea,
+            story_idea,
+            story_text,
+            narrator_profile
+        )
+
+        visual_plans[
+            story_number
+        ] = visual_plan
+
+    return visual_plans
+
+def all_visual_plans_are_valid(
+    project_folder,
+    selected_stories
+):
+
+    found_story = False
+
+    for story_number, story_idea in enumerate(
+        selected_stories,
+        start=1
+    ):
+
+        story_file = os.path.join(
+            project_folder,
+            f"story_{story_number:02d}.txt"
+        )
+
+        if not os.path.exists(
+            story_file
+        ):
+            continue
+
+        found_story = True
+
+        with open(
+            story_file,
+            "r",
+            encoding="utf-8"
+        ) as file:
+            story_text = file.read()
+
+        expected_scene_count = len(
+            split_story_into_visual_scenes(
+                story_text
+            )
+        )
+
+        visual_plan = load_visual_plan(
+            project_folder,
+            story_number
+        )
+
+        if visual_plan is None:
+            return False
+
+        try:
+
+            validate_visual_plan(
+                visual_plan,
+                expected_scene_count
+            )
+
+        except ValueError:
+            return False
+
+    return found_story
+
+def generate_scene_image(
+    client,
+    project_folder,
+    story_number,
+    scene
+):
+
+    scene_number = scene[
+        "scene_number"
+    ]
+
+    visual_prompt = scene[
+        "visual_prompt"
+    ]
+
+    visual_folder = os.path.join(
+        project_folder,
+        "visuals",
+        f"story_{story_number:02d}"
+    )
+
+    os.makedirs(
+        visual_folder,
+        exist_ok=True
+    )
+
+    output_file = os.path.join(
+        visual_folder,
+        f"scene_{scene_number:03d}.png"
+    )
+
+    if (
+        os.path.exists(output_file)
+        and os.path.getsize(output_file) > 1000
+    ):
+        print(
+            f"SCENE IMAGE ALREADY EXISTS "
+            f"- SKIPPING: {output_file}"
+        )
+
+        return output_file
+
+    primary_prompt = f"""
+Create a realistic cinematic image for a mature
+YouTube horror narration.
+
+SCENE:
+{visual_prompt}
+
+Style requirements:
+
+- realistic photography
+- cinematic 16:9 composition
+- dark atmospheric lighting
+- believable people and locations
+- mature psychological horror tone
+- natural shadows
+- subtle suspense
+- no readable text
+- no captions
+- no logos
+- no watermarks
+- no graphic gore
+"""
+
+    fallback_prompt = f"""
+Create a realistic cinematic suspense image.
+
+Use this scene only as general visual inspiration:
+
+{visual_prompt}
+
+Keep the result subtle and safe.
+
+Focus on:
+- environment
+- lighting
+- atmosphere
+- objects
+- architecture
+- weather
+- distant or non-threatening people
+
+No violence.
+No injuries.
+No gore.
+No weapons.
+No readable text.
+No logos.
+No watermarks.
+Cinematic 16:9 photography.
+"""
+
+    try:
+
+        result = run_with_retry(
+            client.images.generate,
+            model=IMAGE_MODEL,
+            prompt=primary_prompt,
+            size="1536x864",
+            quality="medium",
+            output_format="png",
+            attempts=3,
+            delay_seconds=2,
+            should_retry=should_retry_openai_error
+        )
+
+    except Exception as error:
+
+        if not is_visual_moderation_error(
+            error
+        ):
+            raise
+
+        print(
+            f"\nSCENE {scene_number} PROMPT "
+            f"BLOCKED BY MODERATION"
+        )
+
+        print(
+            "TRYING SAFE FALLBACK PROMPT..."
+        )
+
+        result = run_with_retry(
+            client.images.generate,
+            model=IMAGE_MODEL,
+            prompt=fallback_prompt,
+            size="1536x864",
+            quality="medium",
+            output_format="png",
+            attempts=3,
+            delay_seconds=2,
+            should_retry=should_retry_openai_error
+        )
+
+    record_openai_image_usage(
+        project_folder,
+        result,
+        "visual_scene_image",
+        IMAGE_MODEL
+    )
+
+    image_data = base64.b64decode(
+        result.data[0].b64_json
+    )
+
+    with open(
+        output_file,
+        "wb"
+    ) as file:
+        file.write(
+            image_data
+        )
+
+    print(
+        f"SCENE IMAGE SAVED: "
+        f"{output_file}"
+    )
+
+    return output_file
+
+def generate_all_scene_images(
+    client,
+    project_folder,
+    selected_stories
+):
+
+    generated_images = {}
+
+    for story_number, story_idea in enumerate(
+        selected_stories,
+        start=1
+    ):
+
+        story_file = os.path.join(
+            project_folder,
+            f"story_{story_number:02d}.txt"
+        )
+
+        if not os.path.exists(
+            story_file
+        ):
+            print(
+                f"STORY {story_number} HAS NO FINAL STORY "
+                f"- SKIPPING SCENE IMAGES"
+            )
+            continue
+
+        visual_plan = load_visual_plan(
+            project_folder,
+            story_number
+        )
+
+        if visual_plan is None:
+            raise RuntimeError(
+                f"Visual plan missing for "
+                f"story {story_number}."
+            )
+
+        story_images = []
+
+        for scene in visual_plan[
+            "scenes"
+        ]:
+
+            image_file = generate_scene_image(
+                client,
+                project_folder,
+                story_number,
+                scene
+            )
+
+            story_images.append(
+                image_file
+            )
+
+        generated_images[
+            story_number
+        ] = story_images
+
+    return generated_images
+
+def all_scene_images_are_valid(
+    project_folder,
+    selected_stories
+):
+
+    found_story = False
+
+    for story_number, story_idea in enumerate(
+        selected_stories,
+        start=1
+    ):
+
+        story_file = os.path.join(
+            project_folder,
+            f"story_{story_number:02d}.txt"
+        )
+
+        if not os.path.exists(
+            story_file
+        ):
+            continue
+
+        found_story = True
+
+        visual_plan = load_visual_plan(
+            project_folder,
+            story_number
+        )
+
+        if visual_plan is None:
+            return False
+
+        for scene in visual_plan[
+            "scenes"
+        ]:
+
+            scene_number = scene[
+                "scene_number"
+            ]
+
+            image_file = os.path.join(
+                project_folder,
+                "visuals",
+                f"story_{story_number:02d}",
+                f"scene_{scene_number:03d}.png"
+            )
+
+            if not os.path.exists(
+                image_file
+            ):
+                return False
+
+            if os.path.getsize(
+                image_file
+            ) <= 1000:
+                return False
+
+    return found_story
