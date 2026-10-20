@@ -57,12 +57,15 @@ from subtitles import (
 
 from video import (
     generate_all_story_videos,
+    generate_all_visual_story_videos,
     all_story_videos_are_valid
 )
 
 from visuals import (
     generate_all_visual_plans,
-    all_visual_plans_are_valid
+    all_visual_plans_are_valid,
+    generate_all_scene_images,
+    all_scene_images_are_valid
 )
 
 from story_generation import (
@@ -750,22 +753,56 @@ run_stage(
     )
 )
 
+if not os.path.exists(
+    existing_final_video
+):
+
+    run_stage(
+        output_folder,
+        "visual_plans",
+        generate_all_visual_plans,
+        client,
+        output_folder,
+        idea,
+        selected_stories,
+        narrator_profiles,
+        completion_check=lambda: all_visual_plans_are_valid(
+            output_folder,
+            selected_stories
+        )
+    )
+
+    run_stage(
+    output_folder,
+    "scene_images",
+    generate_all_scene_images,
+    client,
+    output_folder,
+    selected_stories,
+    completion_check=lambda: all_scene_images_are_valid(
+        output_folder,
+        selected_stories
+    )
+)
 background_file = channel_config[
     "background_file"
 ]
 
-run_stage(
-    output_folder,
-    "story_videos",
-    generate_all_story_videos,
-    output_folder,
-    len(selected_stories),
-    background_file,
-    completion_check=lambda: all_story_videos_are_valid(
+if not os.path.exists(
+    existing_final_video
+):
+
+    run_stage(
         output_folder,
-        len(selected_stories)
+        "story_videos",
+        generate_all_visual_story_videos,
+        output_folder,
+        len(selected_stories),
+        completion_check=lambda: all_story_videos_are_valid(
+            output_folder,
+            len(selected_stories)
+        )
     )
-)
 
 run_stage(
     output_folder,

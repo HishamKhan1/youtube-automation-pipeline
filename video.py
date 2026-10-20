@@ -1,6 +1,332 @@
 import os
 import subprocess
+import tempfile
 from config import RAIN_VOLUME
+from visuals import load_visual_plan
+
+
+def get_media_duration(
+    file_path
+):
+
+    command = [
+        "ffprobe",
+        "-v", "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        file_path
+    ]
+
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=True
+    )
+
+    duration = float(
+        result.stdout.strip()
+    )
+
+    if duration <= 0:
+        raise RuntimeError(
+            f"Invalid media duration: "
+            f"{file_path}"
+        )
+
+    return duration
+
+def create_scene_clip(
+    image_file,
+    duration,
+    output_file,
+    motion="static"
+):
+
+    motion_filter = get_scene_motion_filter(
+        motion
+    )
+    command = [
+        "ffmpeg",
+        "-y",
+
+        "-loop", "1",
+        "-i", image_file,
+
+        "-t", str(duration),
+
+        "-vf",
+        motion_filter,
+
+        "-r", "30",
+
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+
+        "-an",
+
+        output_file
+    ]
+
+    subprocess.run(
+        command,
+        check=True
+    )
+
+    print(
+        f"SCENE CLIP SAVED: "
+        f"{output_file}"
+    )
+
+def attach_narration_audio(
+    video_file,
+    audio_file,
+    output_file
+):
+
+    command = [
+        "ffmpeg",
+        "-y",
+
+        "-i", video_file,
+        "-i", audio_file,
+
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+
+        "-c:v", "copy",
+
+        "-c:a", "aac",
+        "-b:a", "192k",
+
+        "-shortest",
+
+        output_file
+    ]
+
+    subprocess.run(
+        command,
+        check=True
+    )
+
+    print(
+        f"NARRATION ATTACHED: "
+        f"{output_file}"
+    )
+
+def create_visual_story_video(
+    project_folder,
+    story_number,
+    audio_file,
+    visual_plan,
+    output_file
+):
+
+    scenes = visual_plan[
+        "scenes"
+    ]
+
+    if not scenes:
+        raise RuntimeError(
+            f"No visual scenes found for "
+            f"story {story_number}."
+        )
+
+    scene_durations = calculate_scene_durations(
+        audio_file,
+        visual_plan
+    )
+
+    output_folder = os.path.dirname(
+        output_file
+    )
+
+    os.makedirs(
+        output_folder,
+        exist_ok=True
+    )
+
+    with tempfile.TemporaryDirectory(
+        dir=output_folder
+    ) as temp_folder:
+
+        scene_clips = []
+
+        for scene, duration in zip(
+            scenes,
+            scene_durations
+        ):
+
+            scene_number = scene[
+                "scene_number"
+            ]
+
+            image_file = os.path.join(
+                project_folder,
+                "visuals",
+                f"story_{story_number:02d}",
+                f"scene_{scene_number:03d}.png"
+            )
+
+            if not os.path.exists(
+                image_file
+            ):
+                raise FileNotFoundError(
+                    f"Scene image missing: "
+                    f"{image_file}"
+                )
+
+            clip_file = os.path.join(
+                temp_folder,
+                f"scene_{scene_number:03d}.mp4"
+            )
+
+            create_scene_clip(
+                image_file,
+                duration,
+                clip_file,
+                motion=scene.get(
+                    "motion",
+                    "static"
+                )
+            )
+
+            scene_clips.append(
+                clip_file
+            )
+
+        concat_file = os.path.join(
+            temp_folder,
+            "scene_concat.txt"
+        )
+
+        silent_video = os.path.join(
+            temp_folder,
+            "silent_story.mp4"
+        )
+
+        combine_story_videos(
+            scene_clips,
+            silent_video,
+            concat_file
+        )
+
+        attach_narration_audio(
+            silent_video,
+            audio_file,
+            output_file
+        )
+
+    print(
+        f"VISUAL STORY VIDEO SAVED: "
+        f"{output_file}"
+    )
+
+def get_scene_motion_filter(
+    motion
+):
+
+    base_filter = (
+        "scale=1920:1080:"
+        "force_original_aspect_ratio=increase,"
+        "crop=1920:1080"
+    )
+
+    if motion == "slow_zoom_in":
+        return (
+            base_filter
+            + ",zoompan="
+            "z='min(zoom+0.0008,1.08)':"
+            "x='iw/2-(iw/zoom/2)':"
+            "y='ih/2-(ih/zoom/2)':"
+            "d=1:s=1920x1080:fps=30"
+        )
+
+    if motion == "slow_zoom_out":
+        return (
+            base_filter
+            + ",zoompan="
+            "z='max(1.08-0.0008*on,1.0)':"
+            "x='iw/2-(iw/zoom/2)':"
+            "y='ih/2-(ih/zoom/2)':"
+            "d=1:s=1920x1080:fps=30"
+        )
+
+    if motion == "pan_left":
+        return (
+            "scale=2100:1080:"
+            "force_original_aspect_ratio=increase,"
+            "crop=1920:1080:"
+            "x='(iw-ow)*(1-t/12)':"
+            "y='(ih-oh)/2'"
+        )
+
+    if motion == "pan_right":
+        return (
+            "scale=2100:1080:"
+            "force_original_aspect_ratio=increase,"
+            "crop=1920:1080:"
+            "x='(iw-ow)*(t/12)':"
+            "y='(ih-oh)/2'"
+        )
+
+    return base_filter
+
+def calculate_scene_durations(
+    audio_file,
+    visual_plan
+):
+
+    total_duration = get_media_duration(
+        audio_file
+    )
+
+    scenes = visual_plan[
+        "scenes"
+    ]
+
+    word_counts = []
+
+    for scene in scenes:
+
+        narration = scene.get(
+            "narration",
+            ""
+        )
+
+        word_count = len(
+            narration.split()
+        )
+
+        word_counts.append(
+            max(
+                word_count,
+                1
+            )
+        )
+
+    total_words = sum(
+        word_counts
+    )
+
+    durations = []
+
+    for word_count in word_counts:
+
+        scene_duration = (
+            total_duration
+            * word_count
+            / total_words
+        )
+
+        durations.append(
+            scene_duration
+        )
+
+    return durations
 
 def create_story_video(
     background_file,
@@ -139,6 +465,75 @@ def generate_all_story_videos(
         create_story_video(
             background_file,
             audio_file,
+            output_file
+        )
+
+def generate_all_visual_story_videos(
+    project_folder,
+    story_count
+):
+
+    video_folder = os.path.join(
+        project_folder,
+        "videos"
+    )
+
+    os.makedirs(
+        video_folder,
+        exist_ok=True
+    )
+
+    for number in range(
+        1,
+        story_count + 1
+    ):
+
+        audio_file = os.path.join(
+            project_folder,
+            "audio",
+            f"story_{number:02d}.mp3"
+        )
+
+        if not os.path.exists(
+            audio_file
+        ):
+            print(
+                f"STORY {number} HAS NO AUDIO "
+                f"- SKIPPING VIDEO"
+            )
+            continue
+
+        visual_plan = load_visual_plan(
+            project_folder,
+            number
+        )
+
+        if visual_plan is None:
+            raise RuntimeError(
+                f"Visual plan missing for "
+                f"story {number}."
+            )
+
+        output_file = os.path.join(
+            video_folder,
+            f"story_{number:02d}_video.mp4"
+        )
+
+        if (
+            os.path.exists(output_file)
+            and os.path.getsize(output_file) > 1000
+        ):
+            print(
+                f"VIDEO ALREADY EXISTS "
+                f"- SKIPPING: {output_file}"
+            )
+            continue
+
+        create_visual_story_video(
+            project_folder,
+            number,
+            audio_file,
+            visual_plan,
             output_file
         )
 
