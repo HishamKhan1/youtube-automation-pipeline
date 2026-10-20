@@ -46,7 +46,8 @@ def create_scene_clip(
 ):
 
     motion_filter = get_scene_motion_filter(
-        motion
+        motion,
+        duration
     )
     command = [
         "ffmpeg",
@@ -226,7 +227,8 @@ def create_visual_story_video(
     )
 
 def get_scene_motion_filter(
-    motion
+    motion,
+    duration
 ):
 
     base_filter = (
@@ -234,25 +236,34 @@ def get_scene_motion_filter(
         "force_original_aspect_ratio=increase,"
         "crop=1920:1080"
     )
+    frame_count = max(
+        duration * 30,
+        1
+    )
+    zoom_step = (
+        0.08 / frame_count
+    )
 
     if motion == "slow_zoom_in":
         return (
             base_filter
             + ",zoompan="
-            "z='min(zoom+0.0008,1.08)':"
+            f"z='min(zoom+{zoom_step},1.08)':"
             "x='iw/2-(iw/zoom/2)':"
             "y='ih/2-(ih/zoom/2)':"
-            "d=1:s=1920x1080:fps=30"
+            f"d={int(frame_count)}:"
+            "s=1920x1080:fps=30"
         )
 
     if motion == "slow_zoom_out":
         return (
             base_filter
             + ",zoompan="
-            "z='max(1.08-0.0008*on,1.0)':"
+            f"z='max(1.08-{zoom_step}*on,1.0)':"
             "x='iw/2-(iw/zoom/2)':"
             "y='ih/2-(ih/zoom/2)':"
-            "d=1:s=1920x1080:fps=30"
+            f"d={int(frame_count)}:"
+            "s=1920x1080:fps=30"
         )
 
     if motion == "pan_left":
@@ -260,7 +271,7 @@ def get_scene_motion_filter(
             "scale=2100:1080:"
             "force_original_aspect_ratio=increase,"
             "crop=1920:1080:"
-            "x='(iw-ow)*(1-t/12)':"
+            f"x='(iw-ow)*(1-min(t/{duration},1))':"
             "y='(ih-oh)/2'"
         )
 
@@ -269,7 +280,7 @@ def get_scene_motion_filter(
             "scale=2100:1080:"
             "force_original_aspect_ratio=increase,"
             "crop=1920:1080:"
-            "x='(iw-ow)*(t/12)':"
+            f"x='(iw-ow)*min(t/{duration},1)':"
             "y='(ih-oh)/2'"
         )
 
