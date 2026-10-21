@@ -220,10 +220,10 @@ def assign_story_timestamps(
 
 def create_subtitle_blocks(
     timed_words,
-    max_words=8,
-    max_chars=45,
-    max_duration=3.5,
-    min_duration=1.2
+    max_words=7,
+    max_chars=38,
+    max_duration=3.0,
+    min_duration=1.0
 ):
 
     blocks = []
@@ -255,7 +255,12 @@ def create_subtitle_blocks(
                 word["text"]
             )
         )
-
+        ends_clause = bool(
+            re.search(
+                r'[,;:]["\']?$',
+                word["text"]
+            )
+        )
         should_finish = (
             duration >= max_duration
             or (
@@ -266,6 +271,14 @@ def create_subtitle_blocks(
                     or (
                         ends_sentence
                         and len(current_words) >= 4
+                    )
+                    or (
+                        ends_sentence
+                        and len(current_words) >= 4
+                    )
+                    or (
+                        ends_clause
+                        and len(current_words) >= 5
                     )
                 )
             )
@@ -391,9 +404,12 @@ def generate_word_timed_subtitles(
     subtitle_file
 ):
 
-    if os.path.exists(subtitle_file):
+    if subtitle_file_is_valid(
+        subtitle_file
+    ):
         print(
-            f"SUBTITLES ALREADY EXIST - SKIPPING: {subtitle_file}"
+            f"SUBTITLES ALREADY EXIST - SKIPPING: "
+            f"{subtitle_file}"
         )
         return
 
@@ -417,6 +433,11 @@ def generate_word_timed_subtitles(
     story_words = get_story_words(
         story_text
     )
+    if not story_words:
+        raise RuntimeError(
+            f"No valid story words found in: "
+            f"{story_file}"
+        )
 
     whisper_words = get_whisper_words(
         timestamp_words
@@ -452,16 +473,91 @@ def generate_word_timed_subtitles(
         subtitle_blocks
     )
 
-    with open(
+    save_subtitle_file_atomic(
         subtitle_file,
-        "w",
-        encoding="utf-8"
-    ) as f:
-        f.write(final_srt)
+        final_srt
+    )
 
     print(
         f"SUBTITLES SAVED: {subtitle_file}"
     )
+
+def subtitle_file_is_valid(
+    subtitle_file
+):
+
+    if not os.path.exists(
+        subtitle_file
+    ):
+        return False
+
+    if os.path.getsize(
+        subtitle_file
+    ) == 0:
+        return False
+
+    try:
+
+        with open(
+            subtitle_file,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            content = file.read()
+
+        return (
+            "-->" in content
+            and bool(
+                content.strip()
+            )
+)
+
+    except OSError:
+        return False
+
+def save_subtitle_file_atomic(
+    subtitle_file,
+    subtitle_text
+):
+
+    temp_file = (
+        subtitle_file + ".tmp"
+    )
+
+    try:
+
+        with open(
+            temp_file,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            file.write(
+                subtitle_text
+            )
+
+        if not subtitle_file_is_valid(
+            temp_file
+        ):
+            raise RuntimeError(
+                f"Generated subtitle file "
+                f"is invalid: {subtitle_file}"
+            )
+
+        os.replace(
+            temp_file,
+            subtitle_file
+        )
+
+    finally:
+
+        if os.path.exists(
+            temp_file
+        ):
+            os.remove(
+                temp_file
+            )
 
 def all_story_subtitles_are_valid(
     project_folder,
@@ -493,14 +589,9 @@ def all_story_subtitles_are_valid(
             f"story_{number:02d}.srt"
         )
 
-        if not os.path.exists(
+        if not subtitle_file_is_valid(
             subtitle_file
         ):
-            return False
-
-        if os.path.getsize(
-            subtitle_file
-        ) == 0:
             return False
 
     return found_story
@@ -649,11 +740,12 @@ def create_subtitled_video(
             f"subtitles='{subtitle_path}':"
             "force_style='"
             "FontName=Arial,"
-            "FontSize=22,"
+            "FontSize=28,"
+            "Bold=1,"
             "Alignment=2,"
-            "MarginV=55,"
-            "Outline=2,"
-            "Shadow=1"
+            "MarginV=80,"
+            "Outline=3,"
+            "Shadow=0"
             "'"
         ),
 
@@ -770,11 +862,12 @@ def create_subtitle_preview(
             f"subtitles='{subtitle_path}':"
             "force_style='"
             "FontName=Arial,"
-            "FontSize=22,"
+            "FontSize=28,"
+            "Bold=1,"
             "Alignment=2,"
-            "MarginV=55,"
-            "Outline=2,"
-            "Shadow=1"
+            "MarginV=80,"
+            "Outline=3,"
+            "Shadow=0"
             "'"
         ),
 
