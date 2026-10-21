@@ -638,6 +638,38 @@ def all_visual_plans_are_valid(
 
     return found_story
 
+def scene_image_is_valid(
+    image_file
+):
+
+    if not os.path.exists(
+        image_file
+    ):
+        return False
+
+    if os.path.getsize(
+        image_file
+    ) < 1000:
+        return False
+
+    try:
+        with open(
+            image_file,
+            "rb"
+        ) as file:
+
+            png_signature = file.read(
+                8
+            )
+
+        return (
+            png_signature
+            == b"\x89PNG\r\n\x1a\n"
+        )
+
+    except OSError:
+        return False
+
 def generate_scene_image(
     client,
     project_folder,
@@ -669,15 +701,13 @@ def generate_scene_image(
         f"scene_{scene_number:03d}.png"
     )
 
-    if (
-        os.path.exists(output_file)
-        and os.path.getsize(output_file) > 1000
+    if scene_image_is_valid(
+        output_file
     ):
         print(
-            f"SCENE IMAGE ALREADY EXISTS "
-            f"- SKIPPING: {output_file}"
+            f"SCENE IMAGE ALREADY EXISTS - SKIPPING: "
+            f"{output_file}"
         )
-
         return output_file
 
     primary_prompt = f"""
@@ -784,13 +814,10 @@ Cinematic 16:9 photography.
         result.data[0].b64_json
     )
 
-    with open(
+    save_scene_image_atomic(
         output_file,
-        "wb"
-    ) as file:
-        file.write(
-            image_data
-        )
+        image_data
+    )
 
     print(
         f"SCENE IMAGE SAVED: "
@@ -907,14 +934,51 @@ def all_scene_images_are_valid(
                 f"scene_{scene_number:03d}.png"
             )
 
-            if not os.path.exists(
+            if not scene_image_is_valid(
                 image_file
             ):
                 return False
 
-            if os.path.getsize(
-                image_file
-            ) <= 1000:
-                return False
-
     return found_story
+
+def save_scene_image_atomic(
+    image_file,
+    image_bytes
+):
+
+    temp_file = (
+        image_file + ".tmp"
+    )
+
+    try:
+
+        with open(
+            temp_file,
+            "wb"
+        ) as file:
+
+            file.write(
+                image_bytes
+            )
+
+        if not scene_image_is_valid(
+            temp_file
+        ):
+            raise RuntimeError(
+                f"Generated scene image "
+                f"is invalid: {image_file}"
+            )
+
+        os.replace(
+            temp_file,
+            image_file
+        )
+
+    finally:
+
+        if os.path.exists(
+            temp_file
+        ):
+            os.remove(
+                temp_file
+            )
