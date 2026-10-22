@@ -3,6 +3,7 @@ from config import TTS_MODEL, DEFAULT_VOICE_ID
 import subprocess
 import tempfile
 from retry import run_with_retry
+from state import load_project_state
 from cost_tracking import (
     record_cost_event,
     get_usage_totals
@@ -126,7 +127,7 @@ def all_story_audio_is_valid(
         if not os.path.exists(
             story_file
         ):
-            continue
+            return False
 
         found_story = True
 
@@ -148,10 +149,11 @@ def generate_story_audio(
     project_folder,
     story_file_path,
     audio_file_path,
-    voice_id=DEFAULT_VOICE_ID
+    voice_id=DEFAULT_VOICE_ID,
+    force=False
 ):
 
-    if os.path.exists(audio_file_path):
+    if os.path.exists(audio_file_path) and not force:
 
         if audio_file_is_valid(
             audio_file_path
@@ -321,26 +323,18 @@ def generate_story_audio(
             check=True
         )
 
+        # Validate the newly generated audio
+        # BEFORE replacing the original file.
+        if not audio_file_is_valid(temporary_output):
+            raise RuntimeError(
+                f"Generated audio failed validation: "
+                f"{temporary_output}"
+            )
+
+        # Only replace the original after validation succeeds.
         os.replace(
             temporary_output,
             audio_file_path
-        )
-
-    if not audio_file_is_valid(
-        audio_file_path
-    ):
-
-        if os.path.exists(
-            audio_file_path
-        ):
-
-            os.remove(
-                audio_file_path
-            )
-
-        raise RuntimeError(
-            f"Generated audio failed validation: "
-            f"{audio_file_path}"
         )
 
     print(
@@ -352,8 +346,18 @@ def generate_all_story_audio(
     elevenlabs,
     project_folder,
     story_count,
-    voice_id=DEFAULT_VOICE_ID
+    voice_id=DEFAULT_VOICE_ID,
+    force=False
 ):
+    
+    state = load_project_state(project_folder)
+
+    audio_state = state["stages"].get("audio", {})
+
+    force = (
+        force
+        or audio_state.get("rebuild_required", False)
+    )
 
     audio_folder = os.path.join(
         project_folder,
@@ -365,6 +369,30 @@ def generate_all_story_audio(
         exist_ok=True
     )
 
+        # Check every story before making paid API calls.
+    missing_or_empty_stories = []
+
+    for number in range(1, story_count + 1):
+        story_name = f"story_{number:02d}.txt"
+
+        story_path = os.path.join(
+            project_folder,
+            story_name
+        )
+
+        if (
+            not os.path.isfile(story_path)
+            or os.path.getsize(story_path) == 0
+        ):
+            missing_or_empty_stories.append(story_name)
+
+    if missing_or_empty_stories:
+        raise RuntimeError(
+            "Cannot generate narration. "
+            "Missing or empty stories: "
+            + ", ".join(missing_or_empty_stories)
+        )
+    
     for number in range(1, story_count + 1):
 
         story_file_path = os.path.join(
@@ -377,18 +405,14 @@ def generate_all_story_audio(
             f"story_{number:02d}.mp3"
         )
 
-        if not os.path.exists(story_file_path):
-            print(
-                f"STORY {number} HAS NO FINAL FILE - SKIPPING AUDIO"
-            )
-            continue
 
         generate_story_audio(
             elevenlabs,
             project_folder,
             story_file_path,
             audio_file_path,
-            voice_id=voice_id
+            voice_id=voice_id,
+            force=force
         )
     
         usage_totals = get_usage_totals(

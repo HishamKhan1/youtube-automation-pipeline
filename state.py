@@ -27,6 +27,54 @@ DEFAULT_STAGES = [
     "cleanup",
 ]
 
+STAGE_DEPENDENCIES = {
+    "story_selection": {"idea"},
+    "stories": {"story_selection"},
+    "visual_plans": {"stories"},
+    "scene_images": {"visual_plans"},
+    "audio": {"stories"},
+    "subtitles": {"audio", "stories"},
+    "story_videos": {"audio", "scene_images"},
+    "subtitled_videos": {"story_videos", "subtitles"},
+    "transitions": {"subtitled_videos"},
+    "combined_video": {"transitions"},
+    "ambience": {"combined_video"},
+    "metadata": {"stories"},
+    "thumbnail_plan": {"metadata"},
+    "thumbnail_image": {"thumbnail_plan"},
+    "thumbnail_final": {"thumbnail_plan", "thumbnail_image"},
+    "shorts": {"ambience", "subtitles", "metadata"},
+    "cleanup": {"shorts", "thumbnail_final"}
+}
+
+
+def get_downstream_stages(stage):
+
+    if stage not in DEFAULT_STAGES:
+        raise ValueError(
+            f"Unknown pipeline stage: {stage}"
+        )
+
+    affected = {stage}
+
+    while True:
+
+        new_stages = {
+            name
+            for name, dependencies in STAGE_DEPENDENCIES.items()
+            if dependencies & affected
+        }
+
+        if new_stages.issubset(affected):
+            break
+
+        affected.update(new_stages)
+
+    return [
+        name
+        for name in DEFAULT_STAGES
+        if name in affected and name != stage
+    ]
 
 def get_timestamp():
     return datetime.now(timezone.utc).isoformat()
@@ -223,6 +271,8 @@ def set_stage_status(
 
     state["stages"][stage]["status"] = status
     state["stages"][stage]["error"] = error
+    if status == "complete":
+        state["stages"][stage]["rebuild_required"] = False
 
     if status in {
         "pending",
@@ -276,6 +326,7 @@ def run_stage(
     action,
     *args,
     skip_if_complete=True,
+    force=False,
     on_skip=None,
     completion_check=None,
     **kwargs
@@ -283,6 +334,7 @@ def run_stage(
 
     if (
         skip_if_complete
+        and not force
         and stage_is_complete(
             project_folder,
             stage
@@ -331,11 +383,19 @@ def run_stage(
     )
 
     try:
-
         result = action(
             *args,
             **kwargs
         )
+
+        if (
+            completion_check is not None
+            and not completion_check()
+        ):
+            raise RuntimeError(
+                f"{stage.upper()} finished, "
+                f"but its output is missing or invalid"
+            )
 
     except Exception as error:
 
@@ -375,6 +435,29 @@ def complete_stage_if_file_exists(
     stage,
     file_path
 ):
+    
+    state = load_project_state(
+        project_folder
+    )
+
+    stage_info = state["stages"].get(
+        stage,
+        {}
+    )
+
+    if (
+        stage_info.get("status") in {
+            "stale",
+            "running",
+            "failed"
+        }
+        or stage_info.get("rebuild_required", False)
+    ):
+        print(
+            f"STAGE {stage.upper()} IS STALE "
+            f"- EXISTING OUTPUT CANNOT BE REUSED"
+        )
+        return False
 
     if not os.path.exists(
         file_path
@@ -399,9 +482,88 @@ def complete_stage_if_file_exists(
 
     return True
 
+def mark_downstream_stale(
+    project_folder,
+    changed_stage
+):
 
+    downstream_stages = get_downstream_stages(
+        changed_stage
+    )
 
+    state = load_project_state(
+        project_folder
+    )
 
+    for stage in downstream_stages:
+
+        if stage not in state["stages"]:
+            state["stages"][stage] = {
+                "status": "pending",
+                "error": None
+            }
+
+        state["stages"][stage]["status"] = "stale"
+        state["stages"][stage]["error"] = None
+        state["stages"][stage]["rebuild_required"] = True
+
+    if downstream_stages:
+        state["status"] = "in_progress"
+
+    save_project_state(
+        project_folder,
+        state
+    )
+
+    print(
+        f"\nINVALIDATED {len(downstream_stages)} "
+        f"DOWNSTREAM STAGES"
+    )
+
+    return downstream_stages
+
+def final_video_can_be_reused(
+    project_folder,
+    final_video_file
+):
+
+    if (
+        not os.path.isfile(final_video_file)
+        or os.path.getsize(final_video_file) <= 1000
+    ):
+        return False
+
+    state = load_project_state(
+        project_folder
+    )
+
+    required_stages = [
+        "stories",
+        "audio",
+        "subtitles",
+        "visual_plans",
+        "scene_images",
+        "story_videos",
+        "subtitled_videos",
+        "transitions",
+        "combined_video",
+        "ambience"
+    ]
+
+    for stage in required_stages:
+
+        status = state["stages"].get(
+            stage, {}
+        ).get("status")
+
+        if status in {
+            "stale",
+            "failed",
+            "running"
+        }:
+            return False
+
+    return True
 
 
 

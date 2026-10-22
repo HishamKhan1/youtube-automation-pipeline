@@ -89,10 +89,14 @@ from state import (
     load_project_state,
     set_stage_status,
     run_stage,
-    complete_stage_if_file_exists
+    complete_stage_if_file_exists,
+    final_video_can_be_reused
 )
 
-from pipeline import finalize_video_project
+from pipeline import (
+    finalize_video_project,
+    rebuild_ambience_only
+)
 
 load_dotenv()
 
@@ -111,6 +115,7 @@ print("\nYOUTUBE VIDEO GENERATOR")
 print("\n1. Create new video")
 print("2. Resume existing video")
 print("3. Finalize video")
+print("4. Rebuild final audio")
 
 choice = input("\nChoose an option: ")
 
@@ -374,7 +379,43 @@ elif choice == "3":
         )
 
         raise SystemExit
-        
+
+elif choice == "4":
+
+    print("\nREBUILD FINAL AUDIO")
+
+    project_folder = choose_project_folder()
+
+    if not project_folder:
+        raise SystemExit
+
+    video_info = load_video_info(
+        project_folder
+    )
+
+    if video_info is None:
+        raise RuntimeError(
+            "Project information could not be loaded."
+        )
+
+    selected_channel_slug, channel_config = (
+        resolve_project_channel_config(
+            project_folder,
+            video_info
+        )
+    )
+
+    rain_file = channel_config[
+        "ambience_file"
+    ]
+
+    rebuild_ambience_only(
+        project_folder,
+        rain_file
+    )
+
+    raise SystemExit
+
 # -----------------------------------
 # INVALID OPTION
 # -----------------------------------
@@ -664,12 +705,37 @@ def generate_project_stories(
         )
 
 
-    print("\nALL AVAILABLE STORIES COMPLETE!")
+        incomplete_stories = []
+
+    for number in range(
+        1,
+        len(selected_stories) + 1
+    ):
+
+        story_file = os.path.join(
+            output_folder,
+            f"story_{number:02d}.txt"
+        )
+
+        if (
+            not os.path.isfile(story_file)
+            or os.path.getsize(story_file) == 0
+        ):
+            incomplete_stories.append(number)
 
     stories_complete_marker = os.path.join(
         output_folder,
         "stories_complete.marker"
     )
+
+    if incomplete_stories:
+
+        if os.path.exists(stories_complete_marker):
+            os.remove(stories_complete_marker)
+
+        raise RuntimeError(
+            f"Stories incomplete: {incomplete_stories}"
+        )
 
     with open(
         stories_complete_marker,
@@ -677,6 +743,8 @@ def generate_project_stories(
         encoding="utf-8"
     ) as file:
         file.write("complete")
+
+    print("\nALL SELECTED STORIES COMPLETE!")
 
 
 # # Generate, review, and save every selected story
@@ -690,9 +758,12 @@ existing_final_video = os.path.join(
     "final_video_complete.mp4"
 )
 
-if os.path.exists(
+reuse_final_video = final_video_can_be_reused(
+    output_folder,
     existing_final_video
-):
+)
+
+if reuse_final_video:
 
     for stage in [
         "stories",
@@ -753,9 +824,7 @@ run_stage(
     )
 )
 
-if not os.path.exists(
-    existing_final_video
-):
+if reuse_final_video:
 
     run_stage(
         output_folder,
@@ -788,9 +857,7 @@ background_file = channel_config[
     "background_file"
 ]
 
-if not os.path.exists(
-    existing_final_video
-):
+if not reuse_final_video:
 
     run_stage(
         output_folder,
@@ -814,4 +881,23 @@ run_stage(
         output_folder,
         len(selected_stories)
     )
+)
+
+# -----------------------------------
+# AUTOMATIC FINALIZATION
+# -----------------------------------
+
+print("\nSTARTING AUTOMATIC FINALIZATION...")
+
+rain_file = channel_config["ambience_file"]
+
+finalize_video_project(
+    client,
+    output_folder,
+    rain_file
+)
+
+print(
+    f"\nLONG-FORM VIDEO PIPELINE COMPLETE: "
+    f"{output_folder}"
 )

@@ -4,7 +4,8 @@ from cost_tracking import print_cost_summary
 from state import (
     run_stage,
     mark_project_complete,
-    complete_stage_if_file_exists
+    complete_stage_if_file_exists,
+    mark_downstream_stale
 )
 from project import (
     load_video_info,
@@ -71,6 +72,48 @@ def json_file_is_valid(
     ):
 
         return False
+
+def validate_final_outputs(project_folder):
+
+    required_files = [
+        (
+            "Final video",
+            os.path.join(
+                project_folder,
+                "final_video_complete.mp4"
+            )
+        ),
+        (
+            "Final thumbnail",
+            os.path.join(
+                project_folder,
+                "thumbnail_final.png"
+            )
+        )
+    ]
+
+    for name, path in required_files:
+
+        if (
+            not os.path.isfile(path)
+            or os.path.getsize(path) <= 1000
+        ):
+            raise RuntimeError(
+                f"{name} is missing or invalid: {path}"
+            )
+
+    metadata_file = os.path.join(
+        project_folder,
+        "youtube_metadata.json"
+    )
+
+    if not json_file_is_valid(metadata_file):
+        raise RuntimeError(
+            f"YouTube metadata is missing or invalid: "
+            f"{metadata_file}"
+        )
+
+    return True
 
 def finalize_video_project(
     client,
@@ -217,8 +260,8 @@ def finalize_video_project(
         "combined_video",
         combine_story_videos,
         video_files,
-        concat_file,
         transition_video,
+        concat_file,
         completion_check=lambda: (
             os.path.exists(
                 transition_video
@@ -436,6 +479,12 @@ def finalize_video_project(
     # COMPLETE
     # -------------------------
 
+        # Validate required final outputs
+
+    validate_final_outputs(
+        project_folder
+    )
+
     mark_project_complete(
         project_folder
     )
@@ -455,3 +504,73 @@ def finalize_video_project(
         "THUMBNAIL: "
         f"{os.path.join(project_folder, 'thumbnail_final.png')}"
     )
+    
+def rebuild_ambience_only(
+    project_folder,
+    rain_file
+):
+
+    input_video = os.path.join(
+        project_folder,
+        "final_video_with_transitions.mp4"
+    )
+
+    final_video = os.path.join(
+        project_folder,
+        "final_video_complete.mp4"
+    )
+
+    temp_video = os.path.join(
+        project_folder,
+        "final_video_rebuilding.mp4"
+    )
+
+    if not os.path.isfile(input_video):
+        raise FileNotFoundError(
+            f"Combined video not found: {input_video}"
+        )
+
+    if not os.path.isfile(rain_file):
+        raise FileNotFoundError(
+            f"Rain audio not found: {rain_file}"
+        )
+
+    def regenerate():
+
+        try:
+            add_background_ambience(
+                input_video,
+                rain_file,
+                temp_video
+            )
+
+            if (
+                not os.path.isfile(temp_video)
+                or os.path.getsize(temp_video) <= 1000
+            ):
+                raise RuntimeError(
+                    "Rebuilt video is missing or invalid."
+                )
+
+            os.replace(
+                temp_video,
+                final_video
+            )
+
+        finally:
+            if os.path.exists(temp_video):
+                os.remove(temp_video)
+
+    run_stage(
+        project_folder,
+        "ambience",
+        regenerate,
+        force=True
+    )
+
+    mark_downstream_stale(
+        project_folder,
+        "ambience"
+    )
+
+    print("\nFINAL AUDIO REBUILD COMPLETE")

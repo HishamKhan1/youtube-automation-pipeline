@@ -74,8 +74,27 @@ def completed_story_files_are_valid(
         os.path.exists(final_video)
         and os.path.getsize(final_video) > 1000
     ):
-        return True
 
+        if not selected_stories:
+            return False
+
+        for number in range(
+            1,
+            len(selected_stories) + 1
+        ):
+
+            story_file = os.path.join(
+                project_folder,
+                f"story_{number:02d}.txt"
+            )
+
+            if (
+                not os.path.isfile(story_file)
+                or os.path.getsize(story_file) == 0
+            ):
+                return False
+
+        return True
     completion_marker = os.path.join(
         project_folder,
         "stories_complete.marker"
@@ -101,7 +120,7 @@ def completed_story_files_are_valid(
         if not os.path.exists(
             story_file
         ):
-            continue
+            return False
 
         found_story = True
 

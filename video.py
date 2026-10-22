@@ -855,6 +855,15 @@ def add_background_ambience(
     output_file
 ):
 
+    video_duration = get_media_duration(
+        video_file
+    )
+
+    fade_out_start = max(
+        0,
+        video_duration - 2
+    )
+    
     command = [
         "ffmpeg",
         "-y",
@@ -866,11 +875,19 @@ def add_background_ambience(
 
         "-filter_complex",
         (
-            f"[1:a]volume={RAIN_VOLUME}[ambience];"
+            f"[1:a]"
+            "highpass=f=120,"
+            "lowpass=f=9000,"
+            f"volume={RAIN_VOLUME},"
+            "afade=t=in:st=0:d=2,"
+            f"afade=t=out:st={fade_out_start:.3f}:d=2"
+            "[ambience];"
             "[0:a][ambience]amix="
             "inputs=2:"
             "duration=first:"
-            "dropout_transition=2[audio]"
+            "dropout_transition=2:"
+            "normalize=0,"
+            "alimiter=limit=0.95[audio]"
         ),
 
         "-map", "0:v",
